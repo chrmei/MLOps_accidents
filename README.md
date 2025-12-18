@@ -40,6 +40,9 @@ This project is an MLOps implementation for road accident prediction, designed a
 ### ✅ Completed
 
 - Project structure based on cookiecutter-data-science template
+- Reproducible Python environment setup with `pyproject.toml` and UV
+- Development automation with Makefile
+- Python version management (`.python-version`, `.tool-versions`)
 - Data import pipeline (`import_raw_data.py`)
 - Data preprocessing pipeline (`make_dataset.py`)
 - Baseline model training (`train_model.py`)
@@ -106,12 +109,16 @@ MLOps_accidents/
 │   ├── test_models.py
 │   └── test_api.py
 ├── .dockerignore              # Docker ignore file (to be created)
+├── .python-version            # Python version for pyenv
+├── .tool-versions             # Python version for asdf
 ├── Dockerfile                 # Multi-stage Dockerfile (to be created)
 ├── docker-compose.yaml        # Local orchestration (to be created)
 ├── dvc.yaml                   # DVC pipeline definition (to be created)
 ├── LICENSE                    # MIT License
-├── requirements.txt           # Python dependencies
-├── setup.py                   # Package setup configuration
+├── Makefile                   # Development commands and automation
+├── pyproject.toml             # Python project configuration and dependencies
+├── requirements.txt           # Python dependencies (legacy, use pyproject.toml)
+├── setup.py                   # Package setup configuration (legacy)
 └── README.md                  # This file
 ```
 
@@ -127,16 +134,29 @@ MLOps_accidents/
 | **Machine Learning** | **scikit-learn** | Model training and evaluation |
 | **Data Processing** | **pandas, numpy** | Data manipulation and preprocessing |
 | **Testing** | **pytest** | Unit and integration testing |
-| **Code Quality** | **black, flake8** | Code formatting and linting |
+| **Code Quality** | **black, flake8, isort** | Code formatting and linting |
+| **Dependency Management** | **UV** | Fast Python package installer and resolver |
+| **Build System** | **setuptools** | Package building and distribution |
 
 ## 🚀 Getting Started
 
 ### Prerequisites
 
-- Python 3.8+
-- pip
-- Docker and Docker Compose (for containerized workflow)
-- Git
+- **Python 3.8+** (Python 3.11 recommended - specified in `.python-version` and `.tool-versions`)
+- **UV** - Fast Python package installer ([Installation guide](https://github.com/astral-sh/uv))
+- **Docker and Docker Compose** (for containerized workflow)
+- **Git**
+- **Make** (for using Makefile commands - usually pre-installed on Linux/Mac)
+
+### Installing UV
+
+If you don't have UV installed, you can install it with:
+
+```bash
+curl -LsSf https://astral.sh/uv/install.sh | sh
+```
+
+Or visit the [UV installation guide](https://github.com/astral-sh/uv) for other installation methods.
 
 ### Installation
 
@@ -146,34 +166,49 @@ MLOps_accidents/
    cd MLOps_accidents
    ```
 
-2. **Create a virtual environment**
+2. **Set up Python version** (optional but recommended)
+   
+   If using **pyenv**:
    ```bash
-   python -m venv my_env
+   pyenv install 3.11.0  # Install Python 3.11 if not already installed
+   pyenv local 3.11.0    # Use the version specified in .python-version
+   ```
+   
+   If using **asdf**:
+   ```bash
+   asdf install python 3.11.0  # Install Python 3.11 if not already installed
+   asdf reshim python           # Reshim after installation
    ```
 
-3. **Activate the virtual environment**
-   
-   On Linux/Mac:
+3. **Install dependencies using UV and Make**
    ```bash
-   source my_env/bin/activate
+   make install-dev
    ```
    
-   On Windows:
+   This will:
+   - Check if UV is installed
+   - Install the project in editable mode with all dependencies
+   - Include development dependencies (pytest, black, isort, mypy, etc.)
+   
+   **Alternative**: Install directly with UV
    ```bash
-   .\my_env\Scripts\activate
+   uv pip install -e ".[dev]"
    ```
 
-4. **Install dependencies**
+4. **Verify installation**
    ```bash
-   pip install -r requirements.txt
+   python --version  # Should show Python 3.8 or higher
+   make help         # View all available Make commands
    ```
-   
-   Note: You may encounter an error with `setup.py`, but this won't interfere with the rest of the project.
 
 ### Initial Setup
 
+You can use Make commands for common tasks:
+
 1. **Import raw data**
    ```bash
+   make run-import
+   # or
    python src/data/import_raw_data.py
    ```
    This will download 4 datasets from AWS S3:
@@ -184,12 +219,16 @@ MLOps_accidents/
 
 2. **Preprocess data**
    ```bash
+   make run-preprocess
+   # or
    python src/data/make_dataset.py
    ```
    This processes the raw data and creates train/test splits in `data/preprocessed/`.
 
 3. **Train the baseline model**
    ```bash
+   make run-train
+   # or
    python src/models/train_model.py
    ```
    This trains a RandomForest classifier and saves it to `src/models/trained_model.joblib`.
@@ -198,13 +237,48 @@ MLOps_accidents/
    
    Using a JSON file:
    ```bash
+   make run-predict-file FILE=src/models/test_features.json
+   # or
    python src/models/predict_model.py src/models/test_features.json
    ```
    
    Or interactively (you'll be prompted to enter features manually):
    ```bash
+   make run-predict
+   # or
    python src/models/predict_model.py
    ```
+
+## 🛠️ Development Commands
+
+The project includes a `Makefile` with common development tasks. Run `make help` to see all available commands:
+
+### Dependency Management
+- `make install` - Install project dependencies (production)
+- `make install-dev` - Install project with development dependencies
+- `make sync` - Sync dependencies from `pyproject.toml`
+- `make update` - Update all dependencies to latest versions
+- `make clean` - Remove build artifacts and cache files
+
+### Code Quality
+- `make lint` - Run linting with flake8
+- `make format` - Format code with black and isort
+- `make type-check` - Run type checking with mypy
+
+### Testing
+- `make test` - Run tests with pytest
+- `make test-cov` - Run tests with coverage report
+
+### Data Pipeline
+- `make run-import` - Import raw data from S3
+- `make run-preprocess` - Preprocess raw data
+- `make run-train` - Train the baseline model
+- `make run-predict` - Make predictions (interactive)
+- `make run-predict-file FILE=path/to/file.json` - Make predictions from JSON file
+
+### Setup
+- `make setup` - Initial project setup (install dependencies)
+- `make setup-venv` - Create virtual environment and install dependencies
 
 ## 🔄 Workflow
 
@@ -292,15 +366,49 @@ For detailed execution plans, see:
 
 - Unit tests should cover core functionality with >70% code coverage
 - Tests should be written for `src/data/`, `src/models/`, and `src/api/` modules
-- Run tests before submitting PRs: `pytest`
+- Run tests before submitting PRs: `make test` or `pytest`
+- Generate coverage reports: `make test-cov`
+
+### Dependency Management
+
+- All dependencies are managed in `pyproject.toml`
+- Use **UV** for installing dependencies: `make install-dev` or `uv pip install -e ".[dev]"`
+- The legacy `requirements.txt` file is kept for reference but `pyproject.toml` is the source of truth
+- Python version is specified in `.python-version` (for pyenv) and `.tool-versions` (for asdf)
 
 ## 🤝 Contributing
 
-1. Create a feature branch from `main`
-2. Make your changes following the development guidelines
-3. Write or update tests as needed
-4. Ensure all tests pass and code is properly formatted
-5. Submit a pull request with a clear description
+1. **Set up your development environment**
+   ```bash
+   make install-dev  # Install dependencies with development tools
+   ```
+
+2. **Create a feature branch from `main`**
+   ```bash
+   git checkout -b feature/your-feature-name
+   ```
+
+3. **Make your changes following the development guidelines**
+
+4. **Format and lint your code**
+   ```bash
+   make format    # Format with black and isort
+   make lint      # Check with flake8
+   make type-check # Type checking with mypy (if applicable)
+   ```
+
+5. **Write or update tests as needed**
+   ```bash
+   make test      # Run tests
+   make test-cov  # Run tests with coverage
+   ```
+
+6. **Ensure all tests pass and code is properly formatted**
+   - All tests must pass: `make test`
+   - Code must be formatted: `make format`
+   - No linting errors: `make lint`
+
+7. **Submit a pull request with a clear description**
 
 ## 📄 License
 
