@@ -30,6 +30,8 @@ from pathlib import Path
 
 import click
 import joblib
+import mlflow
+import mlflow.sklearn
 import numpy as np
 import pandas as pd
 import xgboost as xgb
@@ -324,6 +326,161 @@ def evaluate_model(model, X_test, y_test, config=None):
     return metrics
 
 
+def setup_mlflow(config):
+    """
+    Setup MLflow tracking with Dagshub.
+
+    Parameters
+    ----------
+    config : dict
+        Configuration dictionary
+
+    Returns
+    -------
+    bool
+        True if MLflow is enabled and configured, False otherwise
+    """
+    mlflow_config = config.get("mlflow", {})
+
+    if not mlflow_config.get("enabled", False):
+        logger.info("MLflow tracking is disabled in config")
+        return False
+
+    # Get tracking URI from config or environment
+    tracking_uri = mlflow_config.get("tracking_uri") or os.getenv("MLFLOW_TRACKING_URI")
+
+    # If not set, construct from DAGSHUB_REPO
+    if not tracking_uri:
+        dagshub_repo = os.getenv("DAGSHUB_REPO")
+        if dagshub_repo:
+            tracking_uri = f"https://dagshub.com/{dagshub_repo}.mlflow"
+        else:
+            logger.warning(
+                "MLflow tracking URI not configured. "
+                "Set MLFLOW_TRACKING_URI or DAGSHUB_REPO environment variable."
+            )
+            return False
+
+    # Set tracking URI
+    mlflow.set_tracking_uri(tracking_uri)
+
+    # Set experiment name
+    experiment_name = mlflow_config.get("experiment_name", "accident_prediction")
+    mlflow.set_experiment(experiment_name)
+
+    logger.info(f"MLflow tracking enabled: {tracking_uri}")
+    logger.info(f"MLflow experiment: {experiment_name}")
+
+    return True
+
+
+def log_to_mlflow(
+    config,
+    model,
+    metrics,
+    params,
+    best_cv_score,
+    X_train,
+    y_train,
+    X_test,
+    y_test,
+    use_grid_search=False,
+):
+    """
+    Log experiment to MLflow.
+
+    Parameters
+    ----------
+    config : dict
+        Configuration dictionary
+    model : sklearn estimator
+        Trained model
+    metrics : dict
+        Evaluation metrics
+    params : dict
+        Model parameters
+    best_cv_score : float, optional
+        Best cross-validation score (if grid search was used)
+    X_train, y_train : training data
+    X_test, y_test : test data
+    use_grid_search : bool
+        Whether grid search was used
+    """
+    mlflow_config = config.get("mlflow", {})
+
+    if not mlflow_config.get("enabled", False):
+        return
+
+    try:
+        with mlflow.start_run():
+            logger.info("Logging experiment to MLflow...")
+
+            # Log parameters
+            logger.info("Logging parameters to MLflow...")
+            for param_name, param_value in params.items():
+                mlflow.log_param(param_name, param_value)
+
+            # Log data split parameters
+            data_split = config.get("data_split", {})
+            mlflow.log_param("test_size", data_split.get("test_size", 0.3))
+            mlflow.log_param("random_state", data_split.get("random_state", 42))
+
+            # Log model hyperparameters from config
+            xgb_params = config.get("xgboost", {}).get("default_params", {})
+            for param_name, param_value in xgb_params.items():
+                if param_name not in ["random_state", "eval_metric"]:
+                    mlflow.log_param(f"xgb_{param_name}", param_value)
+
+            # Log feature engineering flags
+            feature_config = config.get("feature_engineering", {})
+            mlflow.log_param(
+                "apply_cyclic_encoding", feature_config.get("apply_cyclic_encoding", True)
+            )
+            mlflow.log_param("apply_interactions", feature_config.get("apply_interactions", True))
+
+            # Log SMOTE configuration
+            smote_config = config.get("smote", {})
+            mlflow.log_param("smote_enabled", smote_config.get("enabled", True))
+
+            # Log grid search info
+            mlflow.log_param("used_grid_search", use_grid_search)
+            if use_grid_search and best_cv_score is not None:
+                mlflow.log_metric("best_cv_f1_score", best_cv_score)
+
+            # Log metrics
+            logger.info("Logging metrics to MLflow...")
+            mlflow.log_metric("accuracy", metrics["accuracy"])
+            mlflow.log_metric("precision", metrics["precision"])
+            mlflow.log_metric("recall", metrics["recall"])
+            mlflow.log_metric("f1_score", metrics["f1_score"])
+
+            # Log dataset info
+            mlflow.log_param("train_samples", len(X_train))
+            mlflow.log_param("test_samples", len(X_test))
+            mlflow.log_param("n_features", X_train.shape[1])
+            mlflow.log_param("n_classes", len(y_train.unique()))
+
+            # Log model
+            if mlflow_config.get("log_model", True):
+                logger.info("Logging model to MLflow...")
+                mlflow.sklearn.log_model(
+                    model, "model", registered_model_name="XGBoost_Accident_Prediction"
+                )
+
+            # Log artifacts (metrics files, confusion matrix, etc.)
+            if mlflow_config.get("log_artifacts", True):
+                logger.info("Logging artifacts to MLflow...")
+                metrics_dir = config.get("paths", {}).get("metrics_dir", "data/metrics")
+                if os.path.exists(metrics_dir):
+                    mlflow.log_artifacts(metrics_dir, "metrics")
+
+            logger.info("MLflow logging completed successfully!")
+
+    except Exception as e:
+        logger.warning(f"Failed to log to MLflow: {e}")
+        logger.warning("Continuing without MLflow logging...")
+
+
 def save_metrics(
     metrics,
     best_params,
@@ -518,6 +675,9 @@ def main(
     logger.info(f"Configuration loaded from: {config}")
     logger.info(f"Grid search: {'Enabled' if grid_search else 'Disabled'}")
 
+    # Setup MLflow
+    mlflow_enabled = setup_mlflow(config_dict)
+
     # Load features
     X, y = load_features(features_path)
 
@@ -590,6 +750,21 @@ def main(
     metadata_path = model_output.replace(".joblib", "_metadata.joblib")
     joblib.dump(metadata, metadata_path)
     logger.info(f"Feature metadata saved to {metadata_path}")
+
+    # Log to MLflow
+    if mlflow_enabled:
+        log_to_mlflow(
+            config_dict,
+            model,
+            metrics,
+            best_params,
+            best_cv_score,
+            X_train,
+            y_train,
+            X_test,
+            y_test,
+            use_grid_search=grid_search,
+        )
 
     logger.info("=" * 60)
     logger.info("Training completed successfully!")

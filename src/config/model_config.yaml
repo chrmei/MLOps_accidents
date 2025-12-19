@@ -68,10 +68,10 @@ evaluation:
   save_confusion_matrix: true  # Save confusion matrix (for ML-3 ticket)
   save_classification_report: true
 
-# MLflow tracking (for future ML-2 ticket)
+# MLflow tracking
 mlflow:
-  enabled: false  # Set to true when MLflow integration is implemented
-  tracking_uri: ""  # Will be set to Dagshub MLflow URI
+  enabled: true  # Enable MLflow logging
+  tracking_uri: ""  # Will be set from environment or constructed from DAGSHUB_REPO
   experiment_name: "accident_prediction"
   log_model: true
   log_artifacts: true
