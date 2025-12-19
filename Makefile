@@ -129,7 +129,7 @@ run-predict-file: ## Make predictions from JSON file (usage: make run-predict-fi
 	$(PYTHON) src/models/predict_model.py $(FILE)
 
 # Complete workflow commands
-workflow-all: $(if $(NOCONFIRM),,run-import) run-preprocess run-features $(if $(GRID_SEARCH),run-train-grid,run-train) run-predict ## Run complete pipeline (use GRID_SEARCH=1 for grid search, NOCONFIRM=1 to skip raw data import and auto-confirm overwrites): import → preprocess → features → train → predict
+workflow-all: $(if $(NOCONFIRM),,run-import) run-preprocess run-features $(if $(filter 1,$(GRID_SEARCH)),run-train-grid,run-train) run-predict ## Run complete pipeline (use GRID_SEARCH=1 for grid search, NOCONFIRM=1 to skip raw data import and auto-confirm overwrites): import → preprocess → features → train → predict
 	@echo "Complete workflow finished!"
 
 workflow-data: run-import run-preprocess ## Run data pipeline: import → preprocess
