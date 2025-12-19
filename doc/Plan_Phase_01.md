@@ -46,7 +46,7 @@ To ensure a clear "Separation of Concerns," the work is divided into three disti
 ### Step 0: Project Foundation
 | ID | Ticket Title | Assignee | Acceptance Criteria |
 | :--- | :--- | :--- | :--- |
-| **PROJ-1** | **Define Objectives & Metrics** | **All** | Document project objectives, success metrics (F1, Precision, Recall), baseline model definition (RandomForest with default params), and minimum performance thresholds. |
+| **PROJ-1** | **Define Objectives & Metrics** | **All** | Document project objectives, success metrics (F1, Precision, Recall), baseline model definition (XGBoost with optimized params), and minimum performance thresholds. |
 | **DATA-0** | **Containerize Data Import** | **Eng A** | Wrap existing `import_raw_data.py` in Docker; integrate into DVC pipeline; ensure data collection step is part of reproducible workflow. |
 
 ### Step 1: Environment & Remote Sync
@@ -60,7 +60,7 @@ To ensure a clear "Separation of Concerns," the work is divided into three disti
 | ID | Ticket Title | Assignee | Acceptance Criteria |
 | :--- | :--- | :--- | :--- |
 | **DATA-1** | **Validation Pipeline** | **Eng A** | Pandera or manual schema validates raw CSVs; Checks types/ranges; integrates with existing `make_dataset.py` workflow. |
-| **ML-0** | **Baseline Model Definition** | **Eng B** | Train simple RandomForest baseline (default params) using existing `train_model.py` structure; establish performance benchmark; document metrics in MLflow. |
+| **ML-0** | **Baseline Model Definition** | **Eng B** | Train XGBoost baseline model (optimized params) using existing `train_model.py` structure; establish performance benchmark; document metrics in MLflow. |
 | **ML-2** | **MLflow Integration** | **Eng B** | Logging metrics/params to Dagshub MLflow remote; track experiments for baseline and future models. |
 | **API-1** | **FastAPI Skeleton** | **Eng C** | `/predict` and `/health` endpoints active with Pydantic models; integrate with existing `predict_model.py` logic. |
 
@@ -152,7 +152,7 @@ docker-compose up --build
 Phase 1 is considered complete when:
 
 1. **Data Pipeline**: Raw data can be imported, validated, and preprocessed via `dvc repro` in a containerized environment.
-2. **Baseline Model**: A RandomForest baseline model is trained, evaluated, and logged to MLflow with documented metrics (F1, Precision, Recall).
+2. **Baseline Model**: An XGBoost baseline model is trained, evaluated, and logged to MLflow with documented metrics (F1, Precision, Recall).
 3. **API**: FastAPI service runs in Docker, accepts prediction requests, and returns results.
 4. **Testing**: Unit tests cover core functionality with >70% coverage; CI pipeline runs tests on every PR.
 5. **Documentation**: All tickets have acceptance criteria met; code is config-driven and follows project structure.

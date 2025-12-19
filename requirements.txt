@@ -11,8 +11,9 @@ pandas
 #logging
 numpy 
 pathlib 
-scikit-learn
-imbalanced-learn
+scikit-learn>=1.4.2,<1.5
+imbalanced-learn==0.14.0
 joblib
+xgboost==3.1.2
 #sys
 #json

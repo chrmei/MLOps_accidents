@@ -32,8 +32,9 @@ dependencies = [
     "pandas",
     "numpy",
     "pathlib",
-    "scikit-learn",
-    "imbalanced-learn",
+    "pyyaml",
+    "scikit-learn>=1.4.2,<1.5",
+    "imbalanced-learn==0.14.0",
     "joblib",
     "dvc[s3]>=3.42.0",
 ]
@@ -45,6 +46,8 @@ dev = [
     "black",
     "isort",
     "mypy",
+    "seaborn==0.13.2",
+    "xgboost==3.1.2",
 ]
 
 [project.urls]
