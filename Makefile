@@ -1,5 +1,12 @@
 .PHONY: help install install-dev sync lock update clean lint format type-check test test-cov run-import run-preprocess run-features run-train run-train-grid run-predict run-predict-file workflow-all workflow-data workflow-ml dvc-init dvc-setup-remote dvc-status dvc-push dvc-pull dvc-repro
 
+# Load .env file if it exists (cross-platform with GNU Make)
+# Note: On Windows, use Git Bash, WSL, or another Unix-like environment
+ifneq (,$(wildcard .env))
+    include .env
+    export
+endif
+
 # Default Python version (can be overridden)
 PYTHON_VERSION ?= 3.11
 
@@ -161,7 +168,19 @@ dvc-init: ## Initialize DVC repository
 	@echo "DVC initialized! Run 'make dvc-setup-remote' to configure Dagshub remote."
 
 dvc-setup-remote: ## Configure DVC remote with Dagshub (requires .env file)
-	@bash scripts/setup_dvc_remote.sh
+	@if [ -z "$(DAGSHUB_USERNAME)" ] || [ -z "$(DAGSHUB_TOKEN)" ] || [ -z "$(DAGSHUB_REPO)" ]; then \
+		echo "Error: DAGSHUB_USERNAME, DAGSHUB_TOKEN, and DAGSHUB_REPO must be set in .env file"; \
+		echo "Please ensure .env file exists and contains these variables."; \
+		exit 1; \
+	fi
+	@echo "Setting up DVC remote with Dagshub..."
+	@$(DVC) remote add origin s3://dvc 2>/dev/null || $(DVC) remote modify origin url s3://dvc
+	@$(DVC) remote modify origin endpointurl https://dagshub.com/$(DAGSHUB_REPO).s3
+	@$(DVC) remote modify origin --local access_key_id $(DAGSHUB_TOKEN)
+	@$(DVC) remote modify origin --local secret_access_key $(DAGSHUB_TOKEN)
+	@echo "DVC remote configured successfully!"
+	@echo "Repository: $(DAGSHUB_REPO)"
+	@echo "Endpoint: https://dagshub.com/$(DAGSHUB_REPO).s3"
 
 dvc-status: ## Check DVC status
 	@echo "Checking DVC status..."

@@ -219,6 +219,13 @@ MLOps_accidents/
 - **Git** & **Make** - Usually pre-installed
 - **Dagshub account** - [Sign up](https://dagshub.com) for data versioning
 
+> **⚠️ Windows Users**: This project uses Makefiles and shell scripts that require a Unix-like environment. On Windows, please use one of the following:
+> - **Git Bash** (recommended) - Comes with Git for Windows
+> - **WSL (Windows Subsystem for Linux)** - Full Linux environment
+> - **MSYS2/MinGW** - Unix-like environment for Windows
+>
+> The Makefile and shell commands will not work in native Windows PowerShell or CMD.
+
 ### Quick Start
 
 1. **Clone and setup Python** (optional)
