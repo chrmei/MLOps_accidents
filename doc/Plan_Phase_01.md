@@ -43,34 +43,53 @@ To ensure a clear "Separation of Concerns," the work is divided into three disti
 
 ## 📅 Phase 1: Foundations (Deadline: Dec 19th)
 
+### 📊 Engineer B (ML Modeling & Tracking) - Current Status Summary
+
+**Overall Progress: 46% Complete (2/5 tickets complete, 2 partially complete, 1 not started)**
+
+| Ticket | Status | Completion | Priority |
+|--------|--------|-----------|----------|
+| **ML-1** | ✅ Complete | 100% | - |
+| **ML-0** | 🚧 Partial | ~70% | High (blocked by ML-2) |
+| **ML-2** | ❌ Not Started | 0% | **Critical** (blocks ML-0) |
+| **ML-3** | 🚧 Partial | ~60% | Medium |
+| **TEST-1** | ❌ Not Started | 0% | Medium |
+
+**Next Steps (Priority Order):**
+1. **ML-2**: Implement MLflow integration (unblocks ML-0)
+2. **ML-3**: Complete DVC metrics format
+3. **TEST-1**: Create unit tests for models
+
+---
+
 ### Step 0: Project Foundation
-| ID | Ticket Title | Assignee | Acceptance Criteria |
-| :--- | :--- | :--- | :--- |
-| **PROJ-1** | **Define Objectives & Metrics** | **All** | Document project objectives, success metrics (F1, Precision, Recall), baseline model definition (XGBoost with optimized params), and minimum performance thresholds. |
-| **DATA-0** | **Containerize Data Import** | **Eng A** | Wrap existing `import_raw_data.py` in Docker; integrate into DVC pipeline; ensure data collection step is part of reproducible workflow. |
+| ID | Ticket Title | Assignee | Status | Acceptance Criteria |
+| :--- | :--- | :--- | :--- | :--- |
+| **PROJ-1** | **Define Objectives & Metrics** | **All** | ✅ | Document project objectives, success metrics (F1, Precision, Recall), baseline model definition (XGBoost with optimized params), and minimum performance thresholds. |
+| **DATA-0** | **Containerize Data Import** | **Eng A** | 🚧 | Wrap existing `import_raw_data.py` in Docker; integrate into DVC pipeline; ensure data collection step is part of reproducible workflow. |
 
 ### Step 1: Environment & Remote Sync
-| ID | Ticket Title | Assignee | Acceptance Criteria |
-| :--- | :--- | :--- | :--- |
-| **INFRA-1** | **Dagshub & DVC Setup** | **Eng A** | DVC initialized; Remote set to Dagshub; `dvc push` works. |
-| **INFRA-2** | **Project Dockerization** | **Eng C** | Multi-stage Dockerfile created; `.dockerignore` configured. |
-| **ML-1** | **Config-Driven Training** | **Eng B** | Move hardcoded params from `train_model.py` to `model_config.yaml`; refactor training script to use config. |
+| ID | Ticket Title | Assignee | Status | Acceptance Criteria |
+| :--- | :--- | :--- | :--- | :--- |
+| **INFRA-1** | **Dagshub & DVC Setup** | **Eng A** | 🚧 | DVC initialized; Remote set to Dagshub; `dvc push` works. |
+| **INFRA-2** | **Project Dockerization** | **Eng C** | 🚧 | Multi-stage Dockerfile created; `.dockerignore` configured. |
+| **ML-1** | **Config-Driven Training** | **Eng B** | ✅ **COMPLETE** | Move hardcoded params from `train_model.py` to `model_config.yaml`; refactor training script to use config. **Done:** Config file created, all parameters moved, training script refactored to use config with CLI overrides. |
 
 ### Step 2: The Data & Training Core
-| ID | Ticket Title | Assignee | Acceptance Criteria |
-| :--- | :--- | :--- | :--- |
-| **DATA-1** | **Validation Pipeline** | **Eng A** | Pandera or manual schema validates raw CSVs; Checks types/ranges; integrates with existing `make_dataset.py` workflow. |
-| **ML-0** | **Baseline Model Definition** | **Eng B** | Train XGBoost baseline model (optimized params) using existing `train_model.py` structure; establish performance benchmark; document metrics in MLflow. |
-| **ML-2** | **MLflow Integration** | **Eng B** | Logging metrics/params to Dagshub MLflow remote; track experiments for baseline and future models. |
-| **API-1** | **FastAPI Skeleton** | **Eng C** | `/predict` and `/health` endpoints active with Pydantic models; integrate with existing `predict_model.py` logic. |
+| ID | Ticket Title | Assignee | Status | Acceptance Criteria |
+| :--- | :--- | :--- | :--- | :--- |
+| **DATA-1** | **Validation Pipeline** | **Eng A** | 🚧 | Pandera or manual schema validates raw CSVs; Checks types/ranges; integrates with existing `make_dataset.py` workflow. |
+| **ML-0** | **Baseline Model Definition** | **Eng B** | 🚧 **70% COMPLETE** | Train XGBoost baseline model (optimized params) using existing `train_model.py` structure; establish performance benchmark; document metrics in MLflow. **Done:** XGBoost baseline trained, metrics calculated (Accuracy, Precision, Recall, F1), saved to files. **Missing:** Metrics not logged to MLflow (blocked by ML-2). |
+| **ML-2** | **MLflow Integration** | **Eng B** | ❌ **NOT STARTED** | Logging metrics/params to Dagshub MLflow remote; track experiments for baseline and future models. **Status:** Config placeholder exists, but no MLflow implementation yet. **Blocking:** ML-0 completion. |
+| **API-1** | **FastAPI Skeleton** | **Eng C** | 🚧 | `/predict` and `/health` endpoints active with Pydantic models; integrate with existing `predict_model.py` logic. |
 
 ### Step 3: Integration & Testing
-| ID | Ticket Title | Assignee | Acceptance Criteria |
-| :--- | :--- | :--- | :--- |
-| **DATA-2** | **DVC Pipeline (dvc.yaml)**| **Eng A** | `dvc repro` runs ingestion -> validation -> preprocessing; integrates existing `import_raw_data.py` and `make_dataset.py`. |
-| **ML-3** | **Model Evaluation** | **Eng B** | Precision/Recall/F1 and Confusion Matrix saved as DVC metrics; baseline model performance documented. |
-| **TEST-1** | **Unit Test Implementation** | **Eng B/C** | Unit tests for data validation, model training, and API endpoints; >70% code coverage for core modules (`src/data/`, `src/models/`, `src/api/`). |
-| **CI-1** | **GitHub Actions CI** | **Eng C** | Automated `pytest` and `black/flake8` on every PR; test coverage reporting. |
+| ID | Ticket Title | Assignee | Status | Acceptance Criteria |
+| :--- | :--- | :--- | :--- | :--- |
+| **DATA-2** | **DVC Pipeline (dvc.yaml)**| **Eng A** | 🚧 | `dvc repro` runs ingestion -> validation -> preprocessing; integrates existing `import_raw_data.py` and `make_dataset.py`. |
+| **ML-3** | **Model Evaluation** | **Eng B** | 🚧 **60% COMPLETE** | Precision/Recall/F1 and Confusion Matrix saved as DVC metrics; baseline model performance documented. **Done:** All metrics calculated, confusion matrix supported (when enabled in config), saved to JSON/text files. **Missing:** Metrics not in DVC format (`metrics.json`), confusion matrix not saved as separate file/image. |
+| **TEST-1** | **Unit Test Implementation** | **Eng B/C** | ❌ **NOT STARTED** | Unit tests for data validation, model training, and API endpoints; >70% code coverage for core modules (`src/data/`, `src/models/`, `src/api/`). **Status:** No test files created yet. |
+| **CI-1** | **GitHub Actions CI** | **Eng C** | 🚧 | Automated `pytest` and `black/flake8` on every PR; test coverage reporting. |
 
 ---
 
