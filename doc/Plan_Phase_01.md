@@ -78,14 +78,36 @@ To ensure a clear "Separation of Concerns," the work is divided into three disti
 
 ### 1. The "Clean Slate" Start
 Engineers must ensure their local environment matches the container environment.
-```bash
-# Initialize DVC and link to Dagshub (Engineer A)
-dvc init
-dvc remote add -d origin https://dagshub.com/repo/data.dvc
-dvc remote modify origin --local auth basic
-dvc remote modify origin --local user <username>
-dvc remote modify origin --local password <token>
-```
+
+#### Setting up Dagshub Credentials
+
+1. **Create your `.env` file** (credentials are stored locally and gitignored):
+   ```bash
+   cp .env.example .env
+   ```
+
+2. **Edit `.env`** with your Dagshub credentials:
+   - Get your Dagshub token from: https://dagshub.com/user/settings/tokens
+   - Update `DAGSHUB_USERNAME`, `DAGSHUB_TOKEN`, and `DAGSHUB_REPO` in `.env`
+
+3. **Initialize DVC and configure remote** (Engineer A):
+   ```bash
+   # Option 1: Using Makefile (recommended)
+   make dvc-init
+   make dvc-setup-remote
+   
+   # Option 2: Manual setup
+   dvc init
+   # Load environment variables and configure remote
+   export $(grep -v '^#' .env | xargs)
+   dvc remote add origin s3://dvc
+   dvc remote modify origin endpointurl https://dagshub.com/${DAGSHUB_REPO}.s3
+   # For Dagshub S3, use access_key_id and secret_access_key (both set to the token)
+   dvc remote modify origin --local access_key_id ${DAGSHUB_TOKEN}
+   dvc remote modify origin --local secret_access_key ${DAGSHUB_TOKEN}
+   ```
+
+**Note**: The `.env` file is gitignored and will never be committed. Each team member should create their own `.env` file with their personal Dagshub credentials.
 
 ### 2. Containerized Development
 

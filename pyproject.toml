@@ -114,3 +114,19 @@ exclude_lines = [
     "@(abc\\.)?abstractmethod",
 ]
 
+[tool.mypy]
+python_version = "3.11"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = false
+ignore_missing_imports = false
+# Ignore missing stubs for third-party libraries that don't have type stubs
+[[tool.mypy.overrides]]
+module = [
+    "joblib.*",
+    "sklearn.*",
+    "requests.*",
+    "pandas.*",
+]
+ignore_missing_imports = true
+
