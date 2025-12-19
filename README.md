@@ -43,15 +43,16 @@ This project is an MLOps implementation for road accident prediction, designed a
 - Reproducible Python environment setup with `pyproject.toml` and UV
 - Development automation with Makefile
 - Python version management (`.python-version`, `.tool-versions`)
-- Data import pipeline (`import_raw_data.py`)
-- Data preprocessing pipeline (`make_dataset.py`)
-- Baseline model training (`train_model.py`)
-- Model prediction script (`predict_model.py`)
+
 - Initial data exploration notebook
 
 ### 🚧 In Progress
 
 - Containerization with Docker
+- Data import pipeline (`import_raw_data.py`)
+- Data preprocessing pipeline (`make_dataset.py`)
+- Baseline model training (`train_model.py`)
+- Model prediction script (`predict_model.py`)
 - DVC + Dagshub integration for data versioning
 - MLflow integration for experiment tracking
 - FastAPI service for model serving
@@ -142,159 +143,113 @@ MLOps_accidents/
 
 ### Prerequisites
 
-- **Python 3.8+** (Python 3.11 recommended - specified in `.python-version` and `.tool-versions`)
-- **UV** - Fast Python package installer ([Installation guide](https://github.com/astral-sh/uv))
-- **Docker and Docker Compose** (for containerized workflow)
-- **Git**
-- **Make** (for using Makefile commands - usually pre-installed on Linux/Mac)
+- **Python 3.8+** (3.11 recommended - see `.python-version`)
+- **UV** - Fast Python package installer ([Install](https://github.com/astral-sh/uv): `curl -LsSf https://astral.sh/uv/install.sh | sh`)
+- **DVC** - Installed automatically with dependencies
+- **Docker & Docker Compose** - For containerized workflow
+- **Git** & **Make** - Usually pre-installed
+- **Dagshub account** - [Sign up](https://dagshub.com) for data versioning
 
-### Installing UV
+### Quick Start
 
-If you don't have UV installed, you can install it with:
+1. **Clone and setup Python** (optional)
+   ```bash
+   git clone https://github.com/chrmei/MLOps_accidents.git
+   cd MLOps_accidents
+   # Using pyenv: pyenv install 3.11.0 && pyenv local 3.11.0
+   # Using asdf: asdf install python 3.11.0 && asdf reshim python
+   ```
+
+2. **Install dependencies**
+   ```bash
+   make install-dev  # Installs project + dev dependencies (pytest, black, isort, mypy, etc.)
+   # Alternative: uv pip install -e ".[dev]"
+   ```
+
+3. **Verify installation**
+   ```bash
+   python --version && make help
+   ```
+
+5. **Set up DVC and Dagshub (Optional but recommended)**
+   
+   DVC is used for data versioning. To set it up:
+   
+   ```bash
+   # Step 1: Create .env file from template
+   cp .env.example .env
+   
+   # Step 2: MANUALLY EDIT .env file with your Dagshub credentials:
+   #   - DAGSHUB_USERNAME: Your Dagshub username
+   #   - DAGSHUB_TOKEN: Get from https://dagshub.com/user/settings/tokens
+   #   - DAGSHUB_REPO: Your repository (e.g., chrmei/MLOps_accidents)
+   # 
+   # IMPORTANT: You must manually edit .env before running the next commands!
+   
+   # Step 3: Initialize DVC and configure remote using Makefile
+   make dvc-init
+   make dvc-setup-remote
+   ```
+   
+   **Important Notes**:
+   - The `.env` file must be **manually edited** with your credentials before running `make dvc-setup-remote`
+   - The `.env` file is gitignored and will never be committed
+   - Each team member should create their own `.env` file with their personal Dagshub credentials
+   - See [DVC Commands](#dvc-data-version-control) section for all available DVC commands
+
+### Run the Pipeline
 
 ```bash
-curl -LsSf https://astral.sh/uv/install.sh | sh
+# 1. Import raw data (downloads 4 CSV files from AWS S3)
+make run-import
+
+# 2. Preprocess data (creates train/test splits in data/preprocessed/)
+make run-preprocess
+
+# 3. Train baseline model (saves to src/models/trained_model.joblib)
+make run-train
+
+# 4. Make predictions
+make run-predict                    # Interactive mode
+make run-predict-file FILE=path     # From JSON file
 ```
-
-Or visit the [UV installation guide](https://github.com/astral-sh/uv) for other installation methods.
-
-### Installation
-
-1. **Clone the repository**
-   ```bash
-   git clone <repository-url>
-   cd MLOps_accidents
-   ```
-
-2. **Set up Python version** (optional but recommended)
-   
-   If using **pyenv**:
-   ```bash
-   pyenv install 3.11.0  # Install Python 3.11 if not already installed
-   pyenv local 3.11.0    # Use the version specified in .python-version
-   ```
-   
-   If using **asdf**:
-   ```bash
-   asdf install python 3.11.0  # Install Python 3.11 if not already installed
-   asdf reshim python           # Reshim after installation
-   ```
-
-3. **Install dependencies using UV and Make**
-   ```bash
-   make install-dev
-   ```
-   
-   This will:
-   - Check if UV is installed
-   - Install the project in editable mode with all dependencies
-   - Include development dependencies (pytest, black, isort, mypy, etc.)
-   
-   **Alternative**: Install directly with UV
-   ```bash
-   uv pip install -e ".[dev]"
-   ```
-
-4. **Verify installation**
-   ```bash
-   python --version  # Should show Python 3.8 or higher
-   make help         # View all available Make commands
-   ```
-
-### Initial Setup
-
-You can use Make commands for common tasks:
-
-1. **Import raw data**
-   ```bash
-   make run-import
-   # or
-   python src/data/import_raw_data.py
-   ```
-   This will download 4 datasets from AWS S3:
-   - `caracteristiques-2021.csv`
-   - `lieux-2021.csv`
-   - `usagers-2021.csv`
-   - `vehicules-2021.csv`
-
-2. **Preprocess data**
-   ```bash
-   make run-preprocess
-   # or
-   python src/data/make_dataset.py
-   ```
-   This processes the raw data and creates train/test splits in `data/preprocessed/`.
-
-3. **Train the baseline model**
-   ```bash
-   make run-train
-   # or
-   python src/models/train_model.py
-   ```
-   This trains a RandomForest classifier and saves it to `src/models/trained_model.joblib`.
-
-4. **Make predictions**
-   
-   Using a JSON file:
-   ```bash
-   make run-predict-file FILE=src/models/test_features.json
-   # or
-   python src/models/predict_model.py src/models/test_features.json
-   ```
-   
-   Or interactively (you'll be prompted to enter features manually):
-   ```bash
-   make run-predict
-   # or
-   python src/models/predict_model.py
-   ```
 
 ## 🛠️ Development Commands
 
-The project includes a `Makefile` with common development tasks. Run `make help` to see all available commands:
+Run `make help` to see all commands. Key commands:
 
-### Dependency Management
-- `make install` - Install project dependencies (production)
-- `make install-dev` - Install project with development dependencies
-- `make sync` - Sync dependencies from `pyproject.toml`
-- `make update` - Update all dependencies to latest versions
-- `make clean` - Remove build artifacts and cache files
+**Setup & Dependencies**
+- `make install-dev` - Install with dev dependencies
+- `make setup-venv` - Create venv and install dependencies
+- `make clean` - Remove build artifacts
 
-### Code Quality
-- `make lint` - Run linting with flake8
-- `make format` - Format code with black and isort
-- `make type-check` - Run type checking with mypy
+**Code Quality**
+- `make format` - Format with black & isort
+- `make lint` - Lint with flake8
+- `make type-check` - Type checking with mypy
 
-### Testing
-- `make test` - Run tests with pytest
-- `make test-cov` - Run tests with coverage report
+**Testing**
+- `make test` - Run pytest
+- `make test-cov` - Run with coverage report
 
-### Data Pipeline
-- `make run-import` - Import raw data from S3
-- `make run-preprocess` - Preprocess raw data
-- `make run-train` - Train the baseline model
-- `make run-predict` - Make predictions (interactive)
-- `make run-predict-file FILE=path/to/file.json` - Make predictions from JSON file
+**Data Pipeline**
+- `make run-import` - Import raw data
+- `make run-preprocess` - Preprocess data
+- `make run-train` - Train model
+- `make run-predict` - Interactive predictions
+- `make run-predict-file FILE=path` - Predictions from JSON
 
-### Setup
-- `make setup` - Initial project setup (install dependencies)
-- `make setup-venv` - Create virtual environment and install dependencies
+**DVC (Data Version Control)**
+- `make dvc-init` - Initialize DVC
+- `make dvc-setup-remote` - Configure Dagshub remote (**requires manually edited .env**)
+- `make dvc-status` / `dvc-push` / `dvc-pull` / `dvc-repro`
+
+> **Important**: For `make dvc-setup-remote`, you must first manually edit `.env` with your Dagshub credentials (copy from `.env.example`).
 
 ## 🔄 Workflow
 
-### Current Workflow (Phase 1)
-
-1. **Data Ingestion**: Download raw data from S3 using `import_raw_data.py`
-2. **Data Preprocessing**: Transform and clean data using `make_dataset.py`
-3. **Model Training**: Train RandomForest model using `train_model.py`
-4. **Model Inference**: Make predictions using `predict_model.py`
-
-### Target Workflow (Post Phase 1)
-
-1. **Data Pipeline** (DVC): Automated data ingestion → validation → preprocessing
-2. **Model Training** (MLflow): Config-driven training with experiment tracking
-3. **Model Serving** (FastAPI): REST API for real-time predictions
-4. **CI/CD** (GitHub Actions): Automated testing and deployment
+**Current (Phase 1)**: Data Ingestion → Preprocessing → Training → Inference  
+**Target (Post Phase 1)**: DVC Pipeline → MLflow Tracking → FastAPI Serving → CI/CD
 
 ## 👥 Team Structure
 
@@ -349,66 +304,19 @@ For detailed execution plans, see:
 
 ## 📝 Development Guidelines
 
-### Code Conventions
-
-- All Python scripts must be run from the project root specifying the relative file path
-- Use conventional commits (e.g., `feat:`, `fix:`, `docs:`)
-- Follow PEP 8 style guidelines
-- Use type hints where appropriate
-
-### Branching Strategy
-
-- Use feature branches: `feature/<ticket-id>-description`
-- Pull requests require at least 1 approval and passing CI checks
-- Main branch should always be in a deployable state
-
-### Testing
-
-- Unit tests should cover core functionality with >70% code coverage
-- Tests should be written for `src/data/`, `src/models/`, and `src/api/` modules
-- Run tests before submitting PRs: `make test` or `pytest`
-- Generate coverage reports: `make test-cov`
-
-### Dependency Management
-
-- All dependencies are managed in `pyproject.toml`
-- Use **UV** for installing dependencies: `make install-dev` or `uv pip install -e ".[dev]"`
-- The legacy `requirements.txt` file is kept for reference but `pyproject.toml` is the source of truth
-- Python version is specified in `.python-version` (for pyenv) and `.tool-versions` (for asdf)
+**Code**: Run scripts from project root, use conventional commits (`feat:`, `fix:`), follow PEP 8, add type hints  
+**Branches**: `feature/<ticket-id>-description`, PRs require approval + passing CI  
+**Testing**: >70% coverage for `src/data/`, `src/models/`, `src/api/`; run `make test` before PRs  
+**Dependencies**: Managed in `pyproject.toml` via UV (`make install-dev`); Python version in `.python-version`
 
 ## 🤝 Contributing
 
-1. **Set up your development environment**
-   ```bash
-   make install-dev  # Install dependencies with development tools
-   ```
-
-2. **Create a feature branch from `main`**
-   ```bash
-   git checkout -b feature/your-feature-name
-   ```
-
-3. **Make your changes following the development guidelines**
-
-4. **Format and lint your code**
-   ```bash
-   make format    # Format with black and isort
-   make lint      # Check with flake8
-   make type-check # Type checking with mypy (if applicable)
-   ```
-
-5. **Write or update tests as needed**
-   ```bash
-   make test      # Run tests
-   make test-cov  # Run tests with coverage
-   ```
-
-6. **Ensure all tests pass and code is properly formatted**
-   - All tests must pass: `make test`
-   - Code must be formatted: `make format`
-   - No linting errors: `make lint`
-
-7. **Submit a pull request with a clear description**
+1. Setup: `make install-dev`
+2. Branch: `git checkout -b feature/your-feature-name`
+3. Develop: Make changes following guidelines
+4. Quality: `make format && make lint && make type-check`
+5. Test: `make test` (coverage: `make test-cov`)
+6. PR: Ensure all checks pass, submit with clear description
 
 ## 📄 License
 

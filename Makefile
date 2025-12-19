@@ -1,10 +1,23 @@
-.PHONY: help install install-dev sync lock update clean lint format type-check test test-cov run-import run-preprocess run-train run-predict
+.PHONY: help install install-dev sync lock update clean lint format type-check test test-cov run-import run-preprocess run-train run-predict dvc-init dvc-setup-remote dvc-status dvc-push dvc-pull dvc-repro
 
 # Default Python version (can be overridden)
 PYTHON_VERSION ?= 3.11
 
 # UV executable (use uv if available, otherwise suggest installation)
 UV := $(shell command -v uv 2> /dev/null)
+
+# Detect virtual environment and use its Python if available
+# Check if .venv/bin/python exists, otherwise fall back to system python
+PYTHON := $(shell if [ -f .venv/bin/python ]; then echo .venv/bin/python; else echo python; fi)
+
+# Detect virtual environment tools (flake8, black, isort, mypy, pytest, dvc)
+# Use venv versions if available, otherwise use system versions
+FLAKE8 := $(shell if [ -f .venv/bin/flake8 ]; then echo .venv/bin/flake8; else echo flake8; fi)
+BLACK := $(shell if [ -f .venv/bin/black ]; then echo .venv/bin/black; else echo black; fi)
+ISORT := $(shell if [ -f .venv/bin/isort ]; then echo .venv/bin/isort; else echo isort; fi)
+MYPY := $(shell if [ -f .venv/bin/mypy ]; then echo .venv/bin/mypy; else echo mypy; fi)
+PYTEST := $(shell if [ -f .venv/bin/pytest ]; then echo .venv/bin/pytest; else echo pytest; fi)
+DVC := $(shell if [ -f .venv/bin/dvc ]; then echo .venv/bin/dvc; else echo dvc; fi)
 
 help: ## Show this help message
 	@echo "Available targets:"
@@ -54,42 +67,50 @@ clean: ## Remove build artifacts and cache files
 
 lint: ## Run linting with flake8
 	@echo "Running flake8..."
-	flake8 src/ --max-line-length=88 --extend-ignore=E203,W503
+	$(FLAKE8) src/ --max-line-length=88 --extend-ignore=E203,W503
 
 format: ## Format code with black and isort
 	@echo "Formatting code with black..."
-	black src/ tests/
+	@if [ -d tests ]; then \
+		$(BLACK) src/ tests/; \
+	else \
+		$(BLACK) src/; \
+	fi
 	@echo "Sorting imports with isort..."
-	isort src/ tests/
+	@if [ -d tests ]; then \
+		$(ISORT) src/ tests/; \
+	else \
+		$(ISORT) src/; \
+	fi
 
 type-check: ## Run type checking with mypy
 	@echo "Running mypy..."
-	mypy src/
+	$(MYPY) src/
 
 test: ## Run tests with pytest
 	@echo "Running tests..."
-	pytest
+	$(PYTEST)
 
 test-cov: ## Run tests with coverage report
 	@echo "Running tests with coverage..."
-	pytest --cov=src --cov-report=term-missing --cov-report=html
+	$(PYTEST) --cov=src --cov-report=term-missing --cov-report=html
 
 # Data pipeline commands
 run-import: ## Import raw data from S3
 	@echo "Importing raw data..."
-	python src/data/import_raw_data.py
+	$(PYTHON) src/data/import_raw_data.py
 
 run-preprocess: ## Preprocess raw data
 	@echo "Preprocessing data..."
-	python src/data/make_dataset.py
+	$(PYTHON) src/data/make_dataset.py
 
 run-train: ## Train the baseline model
 	@echo "Training model..."
-	python src/models/train_model.py
+	$(PYTHON) src/models/train_model.py
 
 run-predict: ## Make predictions (interactive)
 	@echo "Making predictions..."
-	python src/models/predict_model.py
+	$(PYTHON) src/models/predict_model.py
 
 run-predict-file: ## Make predictions from JSON file (usage: make run-predict-file FILE=src/models/test_features.json)
 	@if [ -z "$(FILE)" ]; then \
@@ -97,7 +118,7 @@ run-predict-file: ## Make predictions from JSON file (usage: make run-predict-fi
 		exit 1; \
 	fi
 	@echo "Making predictions from $(FILE)..."
-	python src/models/predict_model.py $(FILE)
+	$(PYTHON) src/models/predict_model.py $(FILE)
 
 # Setup commands
 setup: check-uv ## Initial project setup (install dependencies)
@@ -114,4 +135,29 @@ setup-venv: check-uv ## Create virtual environment and install dependencies
 	.venv/bin/pip install --upgrade pip
 	uv pip install -e ".[dev]"
 	@echo "Virtual environment created! Activate it with: source .venv/bin/activate"
+
+# DVC commands
+dvc-init: ## Initialize DVC repository
+	@echo "Initializing DVC..."
+	$(DVC) init
+	@echo "DVC initialized! Run 'make dvc-setup-remote' to configure Dagshub remote."
+
+dvc-setup-remote: ## Configure DVC remote with Dagshub (requires .env file)
+	@bash scripts/setup_dvc_remote.sh
+
+dvc-status: ## Check DVC status
+	@echo "Checking DVC status..."
+	$(DVC) status
+
+dvc-push: ## Push data to DVC remote
+	@echo "Pushing data to DVC remote..."
+	$(DVC) push
+
+dvc-pull: ## Pull data from DVC remote
+	@echo "Pulling data from DVC remote..."
+	$(DVC) pull
+
+dvc-repro: ## Reproduce DVC pipeline
+	@echo "Reproducing DVC pipeline..."
+	$(DVC) repro
 
