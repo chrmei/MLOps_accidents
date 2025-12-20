@@ -1,0 +1,78 @@
+# Model Configuration File
+# This file contains all configurable parameters for model training and evaluation
+
+# Model type: baseline model is XGBoost
+model:
+  type: "xgboost"  # Baseline model: XGBoost (changed from RandomForest)
+  name: "XGBoost Baseline"
+
+# XGBoost default parameters (baseline model)
+xgboost:
+  default_params:
+    colsample_bytree: 0.7
+    learning_rate: 0.05
+    max_depth: 4
+    n_estimators: 1000
+    subsample: 0.8
+    random_state: 42
+    eval_metric: "logloss"
+
+# Grid search parameters (for hyperparameter tuning)
+grid_search:
+  enabled: false  # Set to true to enable grid search
+  cv: 5  # Number of cross-validation folds
+  scoring: "f1"  # Scoring metric for grid search
+  n_jobs: -1  # Use all available cores
+  verbose: 1  # Verbosity level (0-3)
+  param_grid:
+    xgb__n_estimators: [300, 500, 750, 1000]
+    xgb__max_depth: [4, 5, 6]
+    xgb__learning_rate: [0.01, 0.05, 0.1, 0.15, 0.2]
+    xgb__subsample: [0.8, 1.0]
+    xgb__colsample_bytree: [0.7, 0.8, 0.9]
+
+# SMOTE (Synthetic Minority Oversampling Technique) parameters
+smote:
+  enabled: true  # SMOTE is used to handle class imbalance
+  random_state: 42
+  # Additional SMOTE parameters can be added here if needed
+  # k_neighbors: 5
+  # sampling_strategy: "auto"
+
+# Data splitting parameters
+data_split:
+  test_size: 0.3  # Proportion of data for test set
+  random_state: 42  # Random state for reproducibility
+  shuffle: true
+
+# Feature engineering parameters
+feature_engineering:
+  apply_cyclic_encoding: true  # Apply cyclic encoding for temporal features
+  apply_interactions: true  # Create interaction features
+
+# Paths and directories
+paths:
+  features: "data/preprocessed/features.csv"
+  model_output: "models/trained_model.joblib"
+  metrics_dir: "data/metrics"
+  label_encoders: "models/label_encoders.joblib"
+  model_metadata: "models/trained_model_metadata.joblib"
+
+# Evaluation metrics to compute
+evaluation:
+  metrics:
+    - "accuracy"
+    - "precision"
+    - "recall"
+    - "f1"
+  save_confusion_matrix: true  # Save confusion matrix (for ML-3 ticket)
+  save_classification_report: true
+
+# MLflow tracking
+mlflow:
+  enabled: true  # Enable MLflow logging
+  tracking_uri: ""  # Will be set from environment or constructed from DAGSHUB_REPO
+  experiment_name: "accident_prediction"
+  log_model: true
+  log_artifacts: true
+

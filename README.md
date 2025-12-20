@@ -5,6 +5,7 @@ A containerized MLOps project for predicting road accidents using machine learni
 ## 📋 Table of Contents
 
 - [Project Overview](#project-overview)
+- [Pipeline Overview](#pipeline-overview)
 - [Current State](#current-state)
 - [Project Structure](#project-structure)
 - [Technology Stack](#technology-stack)
@@ -30,8 +31,66 @@ This project is an MLOps implementation for road accident prediction, designed a
 ### Success Metrics
 
 - **Model Performance**: F1 Score, Precision, and Recall for accident severity classification
-- **Baseline Model**: RandomForest with default parameters as initial benchmark
+- **Baseline Model**: XGBoost with optimized parameters as initial benchmark
 - **Minimum Performance Threshold**: To be defined based on baseline results
+
+## 🔄 Pipeline Overview
+
+The ML pipeline follows a simple 5-step workflow from raw data to predictions:
+
+```
+┌─────────────────┐
+│  1. Data Import │  Downloads 4 CSV files from AWS S3
+└────────┬────────┘
+         │
+         ▼
+┌─────────────────┐
+│ 2. Preprocessing│  Cleans & merges data → interim dataset
+└────────┬────────┘
+         │
+         ▼
+┌─────────────────┐
+│ 3. Feature Eng. │  Creates ML-ready features (temporal, cyclic, interactions)
+└────────┬────────┘
+         │
+         ▼
+┌─────────────────┐
+│  4. Training    │  Trains XGBoost model with SMOTE
+└────────┬────────┘
+         │
+         ▼
+┌─────────────────┐
+│  5. Prediction  │  Makes predictions on new data
+└─────────────────┘
+```
+
+### Key Files & Their Roles
+
+| Step | File | What It Does | Output |
+|------|------|--------------|--------|
+| **1. Import** | `src/data/import_raw_data.py` | Downloads raw CSV files from S3 | `data/raw/*.csv` |
+| **2. Preprocess** | `src/data/make_dataset.py` | Merges 4 datasets, cleans data, creates target variable | `data/preprocessed/interim_dataset.csv` |
+| **3. Features** | `src/features/build_features.py` | Feature engineering: temporal, cyclic encoding, interactions | `data/preprocessed/features.csv` + `models/label_encoders.joblib` |
+| **4. Train** | `src/models/train_model.py` | Trains XGBoost model, saves model + metadata | `models/trained_model.joblib` + `models/trained_model_metadata.joblib` |
+| **5. Predict** | `src/models/predict_model.py` | Loads model, preprocesses input, makes predictions | Prediction results |
+
+### Supporting Utilities
+
+- **`src/features/preprocess.py`**: Reusable preprocessing functions for inference (ensures training/inference consistency)
+
+### Quick Command Reference
+
+```bash
+# Run complete pipeline
+make workflow-all
+
+# Or run steps individually
+make run-import      # Step 1: Download data
+make run-preprocess  # Step 2: Clean & merge
+make run-features    # Step 3: Feature engineering
+make run-train       # Step 4: Train model
+make run-predict     # Step 5: Make predictions
+```
 
 ## 📊 Current State
 
@@ -39,25 +98,35 @@ This project is an MLOps implementation for road accident prediction, designed a
 
 ### ✅ Completed
 
+**Project Foundation:**
 - Project structure based on cookiecutter-data-science template
 - Reproducible Python environment setup with `pyproject.toml` and UV
 - Development automation with Makefile
 - Python version management (`.python-version`, `.tool-versions`)
-
 - Initial data exploration notebook
+
+**ML Modeling & Tracking (Engineer B):**
+- ✅ **Feature Engineering Pipeline**: Complete feature engineering module (`build_features.py`) with temporal features, cyclic encoding, categorical transformations, and interactions
+- ✅ **Preprocessing Utilities**: Reusable preprocessing functions (`preprocess.py`) ensuring training/inference consistency
+- ✅ **Model Training**: XGBoost model training script (`train_model.py`) with SMOTE pipeline, grid search support, and metrics evaluation
+- ✅ **Model Prediction**: Inference script (`predict_model.py`) with feature preprocessing and model artifact loading
+- ✅ **Model Artifacts**: Model and metadata saving (trained_model.joblib, label_encoders.joblib, trained_model_metadata.joblib)
+- ✅ **Metrics Saving**: Evaluation metrics saved to files (accuracy, precision, recall, F1-score)
 
 ### 🚧 In Progress
 
-- Containerization with Docker
-- Data import pipeline (`import_raw_data.py`)
-- Data preprocessing pipeline (`make_dataset.py`)
-- Baseline model training (`train_model.py`)
-- Model prediction script (`predict_model.py`)
-- DVC + Dagshub integration for data versioning
-- MLflow integration for experiment tracking
-- FastAPI service for model serving
-- Unit testing suite
-- CI/CD pipeline with GitHub Actions
+**ML Modeling & Tracking (Engineer B):**
+- ✅ **ML-0**: Baseline Model Definition (XGBoost baseline implemented)
+- 🚧 **ML-1**: Config-Driven Training (hardcoded params need to be moved to `model_config.yaml`)
+- 🚧 **ML-2**: MLflow Integration (experiment tracking not yet implemented)
+- 🚧 **ML-3**: Model Evaluation (metrics saved to files, but not to DVC metrics format; confusion matrix pending)
+- 🚧 **TEST-1**: Unit Test Implementation (test suite for models not yet created)
+
+**Other Workstreams:**
+- Containerization with Docker (Engineer C)
+- DVC + Dagshub integration for data versioning (Engineer A)
+- FastAPI service for model serving (Engineer C)
+- CI/CD pipeline with GitHub Actions (Engineer C)
 
 ### 📝 Planned
 
@@ -149,6 +218,13 @@ MLOps_accidents/
 - **Docker & Docker Compose** - For containerized workflow
 - **Git** & **Make** - Usually pre-installed
 - **Dagshub account** - [Sign up](https://dagshub.com) for data versioning
+
+> **⚠️ Windows Users**: This project uses Makefiles and shell scripts that require a Unix-like environment. On Windows, please use one of the following:
+> - **Git Bash** (recommended) - Comes with Git for Windows
+> - **WSL (Windows Subsystem for Linux)** - Full Linux environment
+> - **MSYS2/MinGW** - Unix-like environment for Windows
+>
+> The Makefile and shell commands will not work in native Windows PowerShell or CMD.
 
 ### Quick Start
 
@@ -248,7 +324,77 @@ Run `make help` to see all commands. Key commands:
 
 ## 🔄 Workflow
 
-**Current (Phase 1)**: Data Ingestion → Preprocessing → Training → Inference  
+### Detailed Pipeline Steps
+
+#### Step 1: Data Import (`src/data/import_raw_data.py`)
+- **Purpose**: Download raw data from AWS S3
+- **Input**: None (downloads from S3)
+- **Output**: 4 CSV files in `data/raw/`
+  - `caracteristiques-2021.csv` (accident characteristics)
+  - `lieux-2021.csv` (location data)
+  - `usagers-2021.csv` (victim/user data)
+  - `vehicules-2021.csv` (vehicle data)
+
+#### Step 2: Data Preprocessing (`src/data/make_dataset.py`)
+- **Purpose**: Clean and merge raw data into a single dataset
+- **Input**: 4 raw CSV files
+- **Process**:
+  - Merges all datasets on accident ID (`Num_Acc`)
+  - Cleans data (handles missing values, converts types)
+  - Creates aggregations (`nb_victim`, `nb_vehicules`)
+  - Transforms target variable to binary classification
+- **Output**: `data/preprocessed/interim_dataset.csv`
+
+#### Step 3: Feature Engineering (`src/features/build_features.py`)
+- **Purpose**: Transform interim data into ML-ready features
+- **Input**: `interim_dataset.csv`
+- **Process**:
+  - **Temporal features**: Creates datetime, extracts hour/month/day, cyclic encoding
+  - **Age features**: Calculates victim age, creates age bins
+  - **Categorical transformations**: Groups vehicle types, atmospheric conditions
+  - **Interactions**: Creates feature interactions (e.g., `victims_per_vehicle`)
+  - **Encoding**: Label encodes categorical features
+- **Output**: 
+  - `data/preprocessed/features.csv` (feature-engineered dataset)
+  - `models/label_encoders.joblib` (saved encoders for inference)
+
+#### Step 4: Model Training (`src/models/train_model.py`)
+- **Purpose**: Train XGBoost model with SMOTE for imbalanced data
+- **Input**: `features.csv`
+- **Process**:
+  - Splits data into train/test sets
+  - Applies SMOTE (oversampling) to handle class imbalance
+  - Trains XGBoost classifier (with or without grid search)
+  - Evaluates model performance
+- **Output**:
+  - `models/trained_model.joblib` (trained model pipeline)
+  - `models/trained_model_metadata.joblib` (feature names, config)
+  - `data/metrics/` (evaluation metrics and reports)
+
+#### Step 5: Prediction (`src/models/predict_model.py`)
+- **Purpose**: Make predictions on new data
+- **Input**: JSON file with input features
+- **Process**:
+  - Loads trained model and artifacts (encoders, metadata)
+  - Preprocesses input using same pipeline as training (`src/features/preprocess.py`)
+  - Aligns features with model expectations
+  - Makes prediction
+- **Output**: Prediction result (0 = Non-Priority, 1 = Priority)
+
+### Complete Workflow Command
+
+```bash
+# Run entire pipeline in one command
+make workflow-all
+
+# Or run steps individually for more control
+make run-import      # Step 1: Download raw data
+make run-preprocess  # Step 2: Create interim dataset
+make run-features    # Step 3: Build features
+make run-train       # Step 4: Train model
+make run-predict     # Step 5: Make predictions
+```
+
 **Target (Post Phase 1)**: DVC Pipeline → MLflow Tracking → FastAPI Serving → CI/CD
 
 ## 👥 Team Structure
@@ -263,7 +409,14 @@ The project is designed for a 3-person team with clear separation of concerns:
 ### **Engineer B: ML Modeling & Tracking**
 - **Focus**: ML model development and experiment logging
 - **Deliverables**: Training scripts, MLflow tracking, model registry management
-- **Primary Files**: `src/models/`, `src/config/model_config.yaml`
+- **Primary Files**: `src/models/`, `src/features/`, `src/config/model_config.yaml`
+- **Status**: 
+  - ✅ Feature engineering pipeline complete
+  - ✅ Model training and prediction scripts functional
+  - 🚧 Config-driven training (ML-1) - pending
+  - 🚧 MLflow integration (ML-2) - pending
+  - 🚧 DVC metrics format (ML-3) - pending
+  - 🚧 Unit tests (TEST-1) - pending
 
 ### **Engineer C: API, Docker & CI/CD**
 - **Focus**: Containerization, API development, and automation
@@ -273,10 +426,23 @@ The project is designed for a 3-person team with clear separation of concerns:
 ## 🗺️ Roadmap
 
 ### Phase 1: Foundations (Deadline: December 19th, 2024)
+
+**ML Modeling & Tracking (Engineer B) Progress:**
+- ✅ Feature engineering pipeline (`build_features.py`, `preprocess.py`)
+- ✅ Model training script (`train_model.py`) with XGBoost + SMOTE
+- ✅ Model prediction script (`predict_model.py`) with preprocessing
+- ✅ Model artifacts and metadata saving
+- ✅ **ML-0**: XGBoost baseline model implemented
+- ✅ **ML-1**: Config-driven training (`model_config.yaml` created)
+- 🚧 **ML-2**: MLflow integration for experiment tracking
+- 🚧 **ML-3**: DVC metrics format and confusion matrix
+- 🚧 **TEST-1**: Unit tests for model training and prediction
+
+**Overall Phase 1 Status:**
 - ✅ Define project objectives and key metrics
 - 🚧 Set up reproducible development environment (containerization, Docker)
-- 🚧 Collect and preprocess data (ML Pipeline)
-- 🚧 Build and evaluate baseline ML model, implement unit tests
+- ✅ Collect and preprocess data (ML Pipeline) - **Data pipeline functional**
+- 🚧 Build and evaluate baseline ML model, implement unit tests - **Model training functional, baseline & tests pending**
 - 🚧 Implement basic inference API
 
 ### Phase 2: Microservices, Tracking & Versioning (Deadline: January 16th, 2026)

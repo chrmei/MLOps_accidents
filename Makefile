@@ -1,4 +1,11 @@
-.PHONY: help install install-dev sync lock update clean lint format type-check test test-cov run-import run-preprocess run-train run-predict dvc-init dvc-setup-remote dvc-status dvc-push dvc-pull dvc-repro
+.PHONY: help install install-dev sync lock update clean lint format type-check test test-cov run-import run-preprocess run-features run-train run-train-grid run-predict run-predict-file workflow-all workflow-data workflow-ml dvc-init dvc-setup-remote dvc-status dvc-push dvc-pull dvc-repro
+
+# Load .env file if it exists (cross-platform with GNU Make)
+# Note: On Windows, use Git Bash, WSL, or another Unix-like environment
+ifneq (,$(wildcard .env))
+    include .env
+    export
+endif
 
 # Default Python version (can be overridden)
 PYTHON_VERSION ?= 3.11
@@ -100,16 +107,24 @@ run-import: ## Import raw data from S3
 	@echo "Importing raw data..."
 	$(PYTHON) src/data/import_raw_data.py
 
-run-preprocess: ## Preprocess raw data
-	@echo "Preprocessing data..."
-	$(PYTHON) src/data/make_dataset.py
+run-preprocess: ## Create interim dataset from raw data
+	@echo "Preprocessing data (creating interim dataset)..."
+	NOCONFIRM=$(NOCONFIRM) $(PYTHON) src/data/make_dataset.py
 
-run-train: ## Train the baseline model
-	@echo "Training model..."
+run-features: ## Build features from interim dataset (XGBoost-optimized)
+	@echo "Building features from interim dataset..."
+	NOCONFIRM=$(NOCONFIRM) $(PYTHON) src/features/build_features.py
+
+run-train: ## Train model with default parameters (fast, no grid search)
+	@echo "Training model with default parameters..."
 	$(PYTHON) src/models/train_model.py
 
-run-predict: ## Make predictions (interactive)
-	@echo "Making predictions..."
+run-train-grid: ## Train model with grid search for hyperparameter tuning (slow)
+	@echo "Training model with grid search (this may take a while)..."
+	$(PYTHON) src/models/train_model.py --grid-search
+
+run-predict: ## Make predictions using default JSON file (src/models/test_features.json)
+	@echo "Making predictions from default JSON file..."
 	$(PYTHON) src/models/predict_model.py
 
 run-predict-file: ## Make predictions from JSON file (usage: make run-predict-file FILE=src/models/test_features.json)
@@ -119,6 +134,16 @@ run-predict-file: ## Make predictions from JSON file (usage: make run-predict-fi
 	fi
 	@echo "Making predictions from $(FILE)..."
 	$(PYTHON) src/models/predict_model.py $(FILE)
+
+# Complete workflow commands
+workflow-all: $(if $(NOCONFIRM),,run-import) run-preprocess run-features $(if $(filter 1,$(GRID_SEARCH)),run-train-grid,run-train) run-predict ## Run complete pipeline (use GRID_SEARCH=1 for grid search, NOCONFIRM=1 to skip raw data import and auto-confirm overwrites): import → preprocess → features → train → predict
+	@echo "Complete workflow finished!"
+
+workflow-data: run-import run-preprocess ## Run data pipeline: import → preprocess
+	@echo "Data pipeline finished!"
+
+workflow-ml: run-features run-train ## Run ML pipeline: features → train
+	@echo "ML pipeline finished!"
 
 # Setup commands
 setup: check-uv ## Initial project setup (install dependencies)
@@ -143,7 +168,19 @@ dvc-init: ## Initialize DVC repository
 	@echo "DVC initialized! Run 'make dvc-setup-remote' to configure Dagshub remote."
 
 dvc-setup-remote: ## Configure DVC remote with Dagshub (requires .env file)
-	@bash scripts/setup_dvc_remote.sh
+	@if [ -z "$(DAGSHUB_USERNAME)" ] || [ -z "$(DAGSHUB_TOKEN)" ] || [ -z "$(DAGSHUB_REPO)" ]; then \
+		echo "Error: DAGSHUB_USERNAME, DAGSHUB_TOKEN, and DAGSHUB_REPO must be set in .env file"; \
+		echo "Please ensure .env file exists and contains these variables."; \
+		exit 1; \
+	fi
+	@echo "Setting up DVC remote with Dagshub..."
+	@$(DVC) remote add origin s3://dvc 2>/dev/null || $(DVC) remote modify origin url s3://dvc
+	@$(DVC) remote modify origin endpointurl https://dagshub.com/$(DAGSHUB_REPO).s3
+	@$(DVC) remote modify origin --local access_key_id $(DAGSHUB_TOKEN)
+	@$(DVC) remote modify origin --local secret_access_key $(DAGSHUB_TOKEN)
+	@echo "DVC remote configured successfully!"
+	@echo "Repository: $(DAGSHUB_REPO)"
+	@echo "Endpoint: https://dagshub.com/$(DAGSHUB_REPO).s3"
 
 dvc-status: ## Check DVC status
 	@echo "Checking DVC status..."
