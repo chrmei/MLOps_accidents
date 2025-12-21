@@ -138,3 +138,63 @@ stages:
       hash: md5
       md5: c740c14317ff5b5dd8c08524ba41c290
       size: 3495
+  test_prediction:
+    cmd: python src/models/predict_model.py
+    deps:
+    - path: models/label_encoders.joblib
+      hash: md5
+      md5: 6c3813a0ffaa347be23b1924dbf394c2
+      size: 18263
+    - path: models/trained_model.joblib
+      hash: md5
+      md5: f45b15a45d3a4cddee8ca84921e4e9c4
+      size: 7235430
+    - path: models/trained_model_metadata.joblib
+      hash: md5
+      md5: c740c14317ff5b5dd8c08524ba41c290
+      size: 3495
+    - path: src/models/predict_model.py
+      hash: md5
+      md5: 157d16a98c3801d3dbb945d4ecabebd3
+      size: 6024
+    params:
+      src/models/test_features.json:
+        actp: 0
+        agg_: 2
+        an: 2021
+        an_nais: 1961
+        atm: 0
+        catr: 3
+        catu: 3
+        catv: 2
+        circ: 2
+        col: 6
+        com: 77317
+        dep: 77
+        etatp: 0
+        hrmn: 17:00
+        infra: 0
+        int: 1
+        jour: 7
+        larrout: 0.0
+        lat: 48.6
+        locp: 0
+        long: 2.89
+        lum: 5
+        mois: 12
+        motor: 1
+        nb_vehicules: 1
+        nb_victim: 2
+        obs: 0
+        obsm: 1
+        place: 10
+        plan: 0
+        prof: 0
+        secu1: 0.0
+        sexe: 1
+        situ: 1
+        surf: 1
+        v1: 0
+        vma: 50
+        vosp: 0
+        year_acc: 2021

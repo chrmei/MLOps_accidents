@@ -28,3 +28,12 @@ stages:
     metrics:
     - data/metrics/training_metrics.json:
         cache: false
+  test_prediction:
+    cmd: python src/models/predict_model.py
+    deps:
+    - models/label_encoders.joblib
+    - models/trained_model.joblib
+    - models/trained_model_metadata.joblib
+    - src/models/predict_model.py
+    params:
+    - src/models/test_features.json:
