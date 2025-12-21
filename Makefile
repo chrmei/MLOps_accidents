@@ -194,7 +194,7 @@ dvc-pull: ## Pull data from DVC remote
 	@echo "Pulling data from DVC remote..."
 	$(DVC) pull
 
-dvc-repro: ## Reproduce DVC pipeline
+dvc-repro: dvc-pull ## Reproduce DVC pipeline
 	@echo "Reproducing DVC pipeline..."
 	$(DVC) repro
 
