@@ -12,14 +12,14 @@ xgboost:
     colsample_bytree: 0.7
     learning_rate: 0.05
     max_depth: 4
-    n_estimators: 1000
+    n_estimators: 500
     subsample: 0.8
     random_state: 42
     eval_metric: "logloss"
 
 # Grid search parameters (for hyperparameter tuning)
 grid_search:
-  enabled: false  # Set to true to enable grid search
+  enabled: true  # Set to true to enable grid search
   cv: 5  # Number of cross-validation folds
   scoring: "f1"  # Scoring metric for grid search
   n_jobs: -1  # Use all available cores
