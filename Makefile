@@ -115,13 +115,17 @@ run-features: ## Build features from interim dataset (XGBoost-optimized)
 	@echo "Building features from interim dataset..."
 	NOCONFIRM=$(NOCONFIRM) $(PYTHON) src/features/build_features.py
 
-run-train: ## Train model with default parameters (fast, no grid search)
-	@echo "Training model with default parameters..."
-	$(PYTHON) src/models/train_model.py
+run-train: ## Train multiple models with default parameters (fast, no grid search)
+	@echo "Training multiple models with default parameters..."
+	$(PYTHON) src/models/train_multi_model.py
 
-run-train-grid: ## Train model with grid search for hyperparameter tuning (slow)
-	@echo "Training model with grid search (this may take a while)..."
-	$(PYTHON) src/models/train_model.py --grid-search
+run-train-grid: ## Train multiple models with grid search for hyperparameter tuning (slow)
+	@echo "Training multiple models with grid search (this may take a while)..."
+	$(PYTHON) src/models/train_multi_model.py --grid-search
+
+run-train-single: ## Train single XGBoost model (legacy - use run-train for multi-model)
+	@echo "Training single XGBoost model (legacy mode)..."
+	$(PYTHON) src/models/train_model.py
 
 run-predict: ## Make predictions using default JSON file (src/models/test_features.json)
 	@echo "Making predictions from default JSON file..."

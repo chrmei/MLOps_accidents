@@ -97,6 +97,67 @@ stages:
             - 0.7
             - 0.8
             - 0.9
+          param_grid_rf:
+            rf__n_estimators:
+            - 100
+            - 200
+            - 300
+            rf__max_depth:
+            - 5
+            - 10
+            - 15
+            - None
+            rf__min_samples_split:
+            - 2
+            - 5
+            - 10
+            rf__min_samples_leaf:
+            - 1
+            - 2
+            - 4
+          param_grid_lr:
+            lr__C:
+            - 0.1
+            - 1.0
+            - 10.0
+            - 100.0
+            lr__penalty:
+            - l1
+            - l2
+            lr__solver:
+            - liblinear
+            - lbfgs
+          param_grid_lgbm:
+            lgbm__n_estimators:
+            - 300
+            - 500
+            - 750
+            lgbm__learning_rate:
+            - 0.01
+            - 0.05
+            - 0.1
+            lgbm__max_depth:
+            - 4
+            - 5
+            - 6
+            lgbm__num_leaves:
+            - 31
+            - 50
+            - 70
+        lightgbm:
+          default_params:
+            n_estimators: 300
+            learning_rate: 0.05
+            max_depth: 5
+            num_leaves: 31
+            random_state: 42
+        logistic_regression:
+          default_params:
+            C: 1.0
+            penalty: l2
+            solver: lbfgs
+            max_iter: 1000
+            random_state: 42
         mlflow:
           enabled: true
           tracking_uri: ''
@@ -104,19 +165,33 @@ stages:
           log_model: true
           log_artifacts: true
           model_registry:
-            registered_model_name: XGBoost_Accident_Prediction
+            registered_model_name: Accident_Prediction
             default_stage: None
             auto_transition_to_staging: false
             production_stage: Production
         model:
           type: xgboost
           name: XGBoost Baseline
+        multi_model:
+          enabled: false
+          enabled_models:
+          - xgboost
+          - random_forest
+          - logistic_regression
+          - lightgbm
         paths:
           features: data/preprocessed/features.csv
           model_output: models/trained_model.joblib
           metrics_dir: data/metrics
           label_encoders: models/label_encoders.joblib
           model_metadata: models/trained_model_metadata.joblib
+        random_forest:
+          default_params:
+            n_estimators: 100
+            max_depth: 10
+            min_samples_split: 2
+            min_samples_leaf: 1
+            random_state: 42
         smote:
           enabled: true
           random_state: 42
@@ -125,23 +200,23 @@ stages:
             colsample_bytree: 0.7
             learning_rate: 0.05
             max_depth: 5
-            n_estimators: 1000
+            n_estimators: 300
             subsample: 1.0
             random_state: 42
             eval_metric: logloss
     outs:
     - path: data/metrics/training_metrics.json
       hash: md5
-      md5: f72eaedd95d6afbb34bb78ee5019bd5d
-      size: 1265
+      md5: 6802fe1295302a495ef4c96b4f87e810
+      size: 1267
     - path: data/metrics/training_report.txt
       hash: md5
-      md5: 64712a40c834f5a1b854c9bf82d57a45
-      size: 1655
+      md5: f90cdf8c67d0344c3ce2bfabd727dd14
+      size: 1656
     - path: models/trained_model.joblib
       hash: md5
-      md5: fd263b36a301d8aeeb36a86cb44d9d56
-      size: 8062572
+      md5: 3621124e2003522071e1d2bad1f30d93
+      size: 6358890
     - path: models/trained_model_metadata.joblib
       hash: md5
       md5: c740c14317ff5b5dd8c08524ba41c290
@@ -156,8 +231,8 @@ stages:
       size: 18263
     - path: models/trained_model.joblib
       hash: md5
-      md5: fd263b36a301d8aeeb36a86cb44d9d56
-      size: 8062572
+      md5: 3621124e2003522071e1d2bad1f30d93
+      size: 6358890
     - path: models/trained_model_metadata.joblib
       hash: md5
       md5: c740c14317ff5b5dd8c08524ba41c290

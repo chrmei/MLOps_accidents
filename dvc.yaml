@@ -15,25 +15,44 @@ stages:
     - data/preprocessed/features.csv
     - models/label_encoders.joblib
   train_eval:
-    cmd: bash -c 'set -a; [ -f .env ] && . .env || true; set +a; python src/models/train_model.py'
+    cmd: bash -c 'set -a; [ -f .env ] && . .env || true; set +a; python src/models/train_multi_model.py'
     deps:
     - data/preprocessed/features.csv
-    - src/models/train_model.py
+    - src/models/train_multi_model.py
+    - src/models/base_trainer.py
+    - src/models/model_trainers.py
+    - src/models/mlflow_utils.py
     params:
     - src/config/model_config.yaml:
     outs:
-    - data/metrics/training_report.txt
-    - models/trained_model.joblib
-    - models/trained_model_metadata.joblib
+    - data/metrics/model_comparison.csv
+    # Model files - all 4 models trained by default (from multi_model.enabled_models in config)
+    # Note: If you change enabled_models in config to train fewer models, update this list accordingly
+    # DVC requires all listed outputs to exist after the command runs
+    - models/xgboost_model.joblib
+    - models/xgboost_model_metadata.joblib
+    - models/random_forest_model.joblib
+    - models/random_forest_model_metadata.joblib
+    - models/logistic_regression_model.joblib
+    - models/logistic_regression_model_metadata.joblib
+    - models/lightgbm_model.joblib
+    - models/lightgbm_model_metadata.joblib
     metrics:
-    - data/metrics/training_metrics.json:
+    # Track metrics for all models - these are used for DVC metrics tracking
+    - data/metrics/xgboost_metrics.json:
+        cache: false
+    - data/metrics/random_forest_metrics.json:
+        cache: false
+    - data/metrics/logistic_regression_metrics.json:
+        cache: false
+    - data/metrics/lightgbm_metrics.json:
         cache: false
   test_prediction:
-    cmd: bash -c 'set -a; [ -f .env ] && . .env || true; set +a; python src/models/predict_model.py'
+    cmd: bash -c 'set -a; [ -f .env ] && . .env || true; set +a; python src/models/predict_model.py --model-path models/xgboost_model.joblib'
     deps:
     - models/label_encoders.joblib
-    - models/trained_model.joblib
-    - models/trained_model_metadata.joblib
+    - models/xgboost_model.joblib
+    - models/xgboost_model_metadata.joblib
     - src/models/predict_model.py
     params:
     - src/models/test_features.json:
