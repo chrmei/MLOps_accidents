@@ -118,7 +118,7 @@ make run-predict     # Step 5: Make predictions
 **ML Modeling & Tracking (Engineer B):**
 - ✅ **ML-0**: Baseline Model Definition (XGBoost baseline implemented)
 - 🚧 **ML-1**: Config-Driven Training (hardcoded params need to be moved to `model_config.yaml`)
-- 🚧 **ML-2**: MLflow Integration (experiment tracking not yet implemented)
+- ✅ **ML-2**: MLflow Integration (experiment tracking and model registry implemented)
 - 🚧 **ML-3**: Model Evaluation (metrics saved to files, but not to DVC metrics format; confusion matrix pending)
 - 🚧 **TEST-1**: Unit Test Implementation (test suite for models not yet created)
 
@@ -414,6 +414,319 @@ Interpretation: Priority
 
 **Target (Post Phase 1)**: DVC Pipeline → MLflow Tracking → FastAPI Serving → CI/CD
 
+## 📦 MLflow Model Registry
+
+The project uses MLflow Model Registry for model versioning and staging. Models are automatically registered during training, and you can manage their lifecycle through staging transitions.
+
+### Configuration
+
+Model registry settings are configured in `src/config/model_config.yaml`:
+
+```yaml
+mlflow:
+  enabled: true
+  tracking_uri: ""  # Set via MLFLOW_TRACKING_URI or DAGSHUB_REPO env vars
+  experiment_name: "accident_prediction"
+  log_model: true
+  log_artifacts: true
+  model_registry:
+    registered_model_name: "XGBoost_Accident_Prediction"
+    default_stage: "None"  # Options: None, Staging, Production, Archived
+    auto_transition_to_staging: false  # Auto-promote to Staging after registration
+    production_stage: "Production"
+```
+
+### Quick Start: Model Staging Workflow
+
+Follow these steps to train, stage, and deploy models using the MLflow Model Registry:
+
+#### Step 1: Set Up Environment
+
+Configure your MLflow tracking URI (choose one method):
+
+```bash
+# Option 1: Set environment variable directly
+export MLFLOW_TRACKING_URI="https://dagshub.com/yourusername/yourrepo.mlflow"
+
+# Option 2: Use DAGSHUB_REPO (auto-constructs URI)
+export DAGSHUB_REPO="yourusername/yourrepo"
+```
+
+Or add to your `.env` file for persistence.
+
+#### Step 2: Train and Register a Model
+
+Train a new model - it will be automatically registered:
+
+```bash
+# Train a model (creates version 1)
+make run-train
+
+# Or with grid search for hyperparameter tuning
+python src/models/train_model.py --grid-search
+```
+
+**What happens:**
+- Model is trained and saved locally to `models/trained_model.joblib`
+- Model is automatically registered to MLflow Model Registry
+- New version is created (starts in "None" stage)
+- Metrics, parameters, and artifacts are logged to MLflow
+
+#### Step 3: Check Registered Models
+
+View what's in your registry:
+
+```bash
+# See all registered models
+python scripts/manage_model_registry.py list-models
+
+# See all versions of your specific model
+python scripts/manage_model_registry.py list-versions \
+  --model-name XGBoost_Accident_Prediction
+```
+
+#### Step 4: Move Model to Staging
+
+After validating the model locally, promote it to Staging for testing:
+
+```bash
+# Move version 1 to Staging
+python scripts/manage_model_registry.py transition \
+  --model-name XGBoost_Accident_Prediction \
+  --version 1 \
+  --stage Staging
+```
+
+#### Step 5: Test Model from Staging
+
+Test the Staging model to ensure it works correctly:
+
+```bash
+# Make predictions using Staging model
+python src/models/predict_model.py src/models/test_features.json \
+  --model-name XGBoost_Accident_Prediction \
+  --stage Staging
+```
+
+#### Step 6: Promote to Production
+
+Once testing passes, promote to Production:
+
+```bash
+# Option A: Promote latest version (recommended)
+python scripts/manage_model_registry.py promote \
+  --model-name XGBoost_Accident_Prediction \
+  --stage Production
+
+# Option B: Promote specific version
+python scripts/manage_model_registry.py transition \
+  --model-name XGBoost_Accident_Prediction \
+  --version 1 \
+  --stage Production
+```
+
+#### Step 7: Use Production Model
+
+In production environments, always load from the Production stage:
+
+```bash
+# Load from Production stage (recommended)
+python src/models/predict_model.py src/models/test_features.json \
+  --model-name XGBoost_Accident_Prediction \
+  --stage Production
+```
+
+#### Step 8: Archive Old Models
+
+When a model is deprecated, archive it (don't delete - maintains history):
+
+```bash
+# Archive old version
+python scripts/manage_model_registry.py archive \
+  --model-name XGBoost_Accident_Prediction \
+  --version 1
+```
+
+### Complete Example Workflow
+
+Here's a complete example from training to production:
+
+```bash
+# 1. Set up environment
+export DAGSHUB_REPO="yourusername/yourrepo"
+
+# 2. Train a new model
+make run-train
+# Output: Model registered as 'XGBoost_Accident_Prediction' version 1
+
+# 3. Check what was registered
+python scripts/manage_model_registry.py list-versions \
+  --model-name XGBoost_Accident_Prediction
+# You'll see version 1 in "None" stage
+
+# 4. Move to Staging for testing
+python scripts/manage_model_registry.py transition \
+  --model-name XGBoost_Accident_Prediction \
+  --version 1 \
+  --stage Staging
+
+# 5. Test the Staging model
+python src/models/predict_model.py src/models/test_features.json \
+  --model-name XGBoost_Accident_Prediction \
+  --stage Staging
+
+# 6. If tests pass, promote to Production
+python scripts/manage_model_registry.py transition \
+  --model-name XGBoost_Accident_Prediction \
+  --version 1 \
+  --stage Production
+
+# 7. Use Production model
+python src/models/predict_model.py src/models/test_features.json \
+  --model-name XGBoost_Accident_Prediction \
+  --stage Production
+
+# 8. Later, train a better model (creates version 2)
+make run-train
+
+# 9. After validating version 2, promote it
+python scripts/manage_model_registry.py promote \
+  --model-name XGBoost_Accident_Prediction \
+  --stage Production
+# This moves version 2 to Production
+
+# 10. Archive old version 1
+python scripts/manage_model_registry.py archive \
+  --model-name XGBoost_Accident_Prediction \
+  --version 1
+```
+
+### Model Staging Lifecycle
+
+Models progress through the following stages:
+
+1. **None** (default) - Newly registered models start here
+2. **Staging** - Models under evaluation/testing
+3. **Production** - Models deployed and serving predictions
+4. **Archived** - Deprecated models
+
+### Managing Models
+
+Use the `scripts/manage_model_registry.py` script to manage models:
+
+#### List Registered Models
+
+```bash
+# List all registered models
+python scripts/manage_model_registry.py list-models
+
+# List all versions of a specific model
+python scripts/manage_model_registry.py list-versions --model-name XGBoost_Accident_Prediction
+```
+
+#### Transition Models Between Stages
+
+```bash
+# Transition a specific version to Production
+python scripts/manage_model_registry.py transition \
+  --model-name XGBoost_Accident_Prediction \
+  --version 1 \
+  --stage Production
+
+# Promote latest version to Production
+python scripts/manage_model_registry.py promote \
+  --model-name XGBoost_Accident_Prediction \
+  --stage Production
+
+# Archive an old version
+python scripts/manage_model_registry.py archive \
+  --model-name XGBoost_Accident_Prediction \
+  --version 1
+```
+
+#### Get Model Information
+
+```bash
+# Get model info by stage
+python scripts/manage_model_registry.py get-model \
+  --model-name XGBoost_Accident_Prediction \
+  --stage Production
+```
+
+### Loading Models from Registry
+
+The prediction script (`src/models/predict_model.py`) supports loading models from the MLflow registry:
+
+```bash
+# Load from Production stage
+python src/models/predict_model.py src/models/test_features.json \
+  --model-name XGBoost_Accident_Prediction \
+  --stage Production
+
+# Load specific version
+python src/models/predict_model.py src/models/test_features.json \
+  --model-name XGBoost_Accident_Prediction \
+  --version 1
+
+# Load from local filesystem (default)
+python src/models/predict_model.py src/models/test_features.json \
+  --model-path models/trained_model.joblib
+```
+
+### Automatic Staging Transitions
+
+You can enable automatic transition to Staging after model registration by setting `auto_transition_to_staging: true` in the config. This is useful for automated workflows where new models should be immediately available for testing.
+
+### Best Practices
+
+1. **Version Control**: Each training run creates a new model version automatically
+2. **Staging Workflow**: 
+   - New models → None stage
+   - After validation → Staging stage
+   - After approval → Production stage
+3. **Production Models**: Always load from Production stage in production environments
+4. **Archiving**: Archive old models instead of deleting them to maintain history
+
+### Environment Setup
+
+Set up MLflow tracking URI via environment variables:
+
+```bash
+# Option 1: Direct MLflow URI
+export MLFLOW_TRACKING_URI="https://dagshub.com/username/repo.mlflow"
+
+# Option 2: Use DAGSHUB_REPO (auto-constructs URI)
+export DAGSHUB_REPO="username/repo"
+```
+
+The tracking URI can also be set in `model_config.yaml`, but environment variables take precedence.
+
+### Quick Reference: Common Commands
+
+```bash
+# LIST MODELS
+python scripts/manage_model_registry.py list-models
+python scripts/manage_model_registry.py list-versions --model-name XGBoost_Accident_Prediction
+
+# TRANSITION STAGES
+python scripts/manage_model_registry.py transition --model-name XGBoost_Accident_Prediction --version 1 --stage Staging
+python scripts/manage_model_registry.py transition --model-name XGBoost_Accident_Prediction --version 1 --stage Production
+
+# PROMOTE LATEST VERSION
+python scripts/manage_model_registry.py promote --model-name XGBoost_Accident_Prediction --stage Production
+
+# ARCHIVE OLD MODEL
+python scripts/manage_model_registry.py archive --model-name XGBoost_Accident_Prediction --version 1
+
+# GET MODEL INFO
+python scripts/manage_model_registry.py get-model --model-name XGBoost_Accident_Prediction --stage Production
+
+# USE IN PREDICTIONS
+python src/models/predict_model.py file.json --model-name XGBoost_Accident_Prediction --stage Production
+python src/models/predict_model.py file.json --model-name XGBoost_Accident_Prediction --version 1
+python src/models/predict_model.py file.json --model-path models/trained_model.joblib  # Local filesystem
+```
+
 ## 👥 Team Structure
 
 The project is designed for a 3-person team with clear separation of concerns:
@@ -431,7 +744,7 @@ The project is designed for a 3-person team with clear separation of concerns:
   - ✅ Feature engineering pipeline complete
   - ✅ Model training and prediction scripts functional
   - 🚧 Config-driven training (ML-1) - pending
-  - 🚧 MLflow integration (ML-2) - pending
+  - ✅ MLflow integration (ML-2) - Model registry with versioning and staging implemented
   - 🚧 DVC metrics format (ML-3) - pending
   - 🚧 Unit tests (TEST-1) - pending
 
@@ -451,7 +764,7 @@ The project is designed for a 3-person team with clear separation of concerns:
 - ✅ Model artifacts and metadata saving
 - ✅ **ML-0**: XGBoost baseline model implemented
 - ✅ **ML-1**: Config-driven training (`model_config.yaml` created)
-- 🚧 **ML-2**: MLflow integration for experiment tracking
+- ✅ **ML-2**: MLflow integration for experiment tracking and model registry
 - 🚧 **ML-3**: DVC metrics format and confusion matrix
 - 🚧 **TEST-1**: Unit tests for model training and prediction
 

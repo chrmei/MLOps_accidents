@@ -1,13 +1,13 @@
 stages:
   preprocess:
-    cmd: python src/data/make_dataset.py
+    cmd: bash -c 'set -a; [ -f .env ] && . .env || true; set +a; python src/data/make_dataset.py'
     deps:
     - data/raw
     - src/data/make_dataset.py
     outs:
     - data/preprocessed/interim_dataset.csv
   build_features:
-    cmd: python src/features/build_features.py
+    cmd: bash -c 'set -a; [ -f .env ] && . .env || true; set +a; python src/features/build_features.py'
     deps:
     - data/preprocessed/interim_dataset.csv
     - src/features/build_features.py
@@ -15,7 +15,7 @@ stages:
     - data/preprocessed/features.csv
     - models/label_encoders.joblib
   train_eval:
-    cmd: python src/models/train_model.py
+    cmd: bash -c 'set -a; [ -f .env ] && . .env || true; set +a; python src/models/train_model.py'
     deps:
     - data/preprocessed/features.csv
     - src/models/train_model.py
@@ -29,7 +29,7 @@ stages:
     - data/metrics/training_metrics.json:
         cache: false
   test_prediction:
-    cmd: python src/models/predict_model.py
+    cmd: bash -c 'set -a; [ -f .env ] && . .env || true; set +a; python src/models/predict_model.py'
     deps:
     - models/label_encoders.joblib
     - models/trained_model.joblib
