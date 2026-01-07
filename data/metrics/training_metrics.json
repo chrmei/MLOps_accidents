@@ -1,0 +1,55 @@
+{
+  "timestamp": "2026-01-07T08:55:56.269586",
+  "parameters": {
+    "xgb__colsample_bytree": 0.7,
+    "xgb__learning_rate": 0.05,
+    "xgb__max_depth": 4,
+    "xgb__n_estimators": 1000,
+    "xgb__subsample": 0.8
+  },
+  "test_metrics": {
+    "accuracy": 0.7948548416180802,
+    "precision": 0.7329317269076305,
+    "recall": 0.6366649223792081,
+    "f1_score": 0.6814151031457109,
+    "classification_report": {
+      "Non-Priority": {
+        "precision": 0.8213090846701553,
+        "recall": 0.8780264123257521,
+        "f1-score": 0.8487212446256814,
+        "support": 10904.0
+      },
+      "Priority": {
+        "precision": 0.7329317269076305,
+        "recall": 0.6366649223792081,
+        "f1-score": 0.6814151031457109,
+        "support": 5733.0
+      },
+      "accuracy": 0.7948548416180802,
+      "macro avg": {
+        "precision": 0.777120405788893,
+        "recall": 0.7573456673524801,
+        "f1-score": 0.7650681738856961,
+        "support": 16637.0
+      },
+      "weighted avg": {
+        "precision": 0.7908548325782785,
+        "recall": 0.7948548416180802,
+        "f1-score": 0.7910686564724884,
+        "support": 16637.0
+      }
+    },
+    "confusion_matrix": [
+      [
+        9574,
+        1330
+      ],
+      [
+        2083,
+        3650
+      ]
+    ]
+  },
+  "used_grid_search": false,
+  "note": "Trained with default parameters (no grid search)"
+}

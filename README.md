@@ -183,7 +183,7 @@ MLOps_accidents/
 ├── .tool-versions             # Python version for asdf
 ├── Dockerfile                 # Multi-stage Dockerfile (to be created)
 ├── docker-compose.yaml        # Local orchestration (to be created)
-├── dvc.yaml                   # DVC pipeline definition (to be created)
+├── dvc.yaml                   # DVC pipeline definition
 ├── LICENSE                    # MIT License
 ├── Makefile                   # Development commands and automation
 ├── pyproject.toml             # Python project configuration and dependencies
@@ -393,6 +393,23 @@ make run-preprocess  # Step 2: Create interim dataset
 make run-features    # Step 3: Build features
 make run-train       # Step 4: Train model
 make run-predict     # Step 5: Make predictions
+```
+
+### Reproducing the Workflow using DVC
+
+Run `make dvc-repro` to reproduce the workflow using default configurations. This will:
+
+1. Pull the latest version of raw data from the remote storage using `dvc pull`
+
+2. Complete the workflow from [Step 2](#step-2-data-preprocessing-srcdatamake_datasetpy) on
+
+Note that DVC needs to be set up first using `make dvc-setup-remote`.
+ 
+The default configurations are defined [here](src/config/model_config.yaml) and the prediction step is done on test features defined [here](src/models/test_features.json), which finally should output
+
+```
+Prediction: 1
+Interpretation: Priority
 ```
 
 **Target (Post Phase 1)**: DVC Pipeline → MLflow Tracking → FastAPI Serving → CI/CD
