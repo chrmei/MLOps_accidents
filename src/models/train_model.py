@@ -30,21 +30,27 @@ from pathlib import Path
 
 import click
 import joblib
+import matplotlib
+matplotlib.use('Agg')  # Use non-interactive backend
+import matplotlib.pyplot as plt
 import mlflow
 import mlflow.sklearn
 import numpy as np
 import pandas as pd
+import seaborn as sns
 import xgboost as xgb
 import yaml
 from imblearn.over_sampling import SMOTE
 from imblearn.pipeline import Pipeline as ImbPipeline
 from sklearn.metrics import (
     accuracy_score,
+    auc,
     classification_report,
     confusion_matrix,
     f1_score,
     precision_score,
     recall_score,
+    roc_curve,
 )
 from sklearn.model_selection import GridSearchCV, train_test_split
 
@@ -312,10 +318,10 @@ def evaluate_model(model, X_test, y_test, config=None):
         "classification_report": report,
     }
 
-    # Add confusion matrix if requested in config
-    if config and config.get("evaluation", {}).get("save_confusion_matrix", False):
-        cm = confusion_matrix(y_test, y_pred)
-        metrics["confusion_matrix"] = cm.tolist()
+    # Always calculate confusion matrix for visualization logging
+    cm = confusion_matrix(y_test, y_pred)
+    metrics["confusion_matrix"] = cm.tolist()
+    metrics["y_pred"] = y_pred.tolist()  # Store predictions for visualization
 
     logger.info(f"Test Set Metrics:")
     logger.info(f"  Accuracy:  {accuracy:.4f}")
@@ -374,6 +380,124 @@ def setup_mlflow(config):
     return True
 
 
+def log_visualizations_to_mlflow(model, X_test, y_test, y_pred, config):
+    """
+    Log visualizations (confusion matrix, ROC curve, feature importance) to MLflow.
+    
+    Parameters
+    ----------
+    model : sklearn estimator
+        Trained model
+    X_test : pd.DataFrame
+        Test features
+    y_test : pd.Series or array-like
+        True labels
+    y_pred : array-like
+        Predicted labels
+    config : dict
+        Configuration dictionary
+    """
+    mlflow_config = config.get("mlflow", {})
+    
+    if not mlflow_config.get("enabled", False):
+        return
+    
+    try:
+        logger.info("Logging visualizations to MLflow...")
+        
+        # Confusion Matrix
+        cm = confusion_matrix(y_test, y_pred)
+        
+        plt.figure(figsize=(8, 6))
+        sns.heatmap(
+            cm,
+            annot=True,
+            fmt='d',
+            cmap='Blues',
+            xticklabels=['Non-Priority', 'Priority'],
+            yticklabels=['Non-Priority', 'Priority'],
+            cbar_kws={'label': 'Count'}
+        )
+        plt.title('Confusion Matrix')
+        plt.ylabel('Actual')
+        plt.xlabel('Predicted')
+        
+        cm_path = "confusion_matrix.png"
+        plt.savefig(cm_path, dpi=150, bbox_inches='tight')
+        plt.close()
+        mlflow.log_artifact(cm_path, "plots")
+        os.remove(cm_path)
+        logger.info("Logged confusion matrix to MLflow")
+        
+        # ROC Curve (if model supports predict_proba)
+        if hasattr(model, 'predict_proba'):
+            try:
+                y_pred_proba = model.predict_proba(X_test)[:, 1]
+                fpr, tpr, _ = roc_curve(y_test, y_pred_proba)
+                roc_auc = auc(fpr, tpr)
+                
+                plt.figure(figsize=(8, 6))
+                plt.plot(fpr, tpr, color='darkorange', lw=2, 
+                        label=f'ROC curve (AUC = {roc_auc:.2f})')
+                plt.plot([0, 1], [0, 1], color='navy', lw=2, linestyle='--', label='Random')
+                plt.xlim([0.0, 1.0])
+                plt.ylim([0.0, 1.05])
+                plt.xlabel('False Positive Rate')
+                plt.ylabel('True Positive Rate')
+                plt.title('ROC Curve')
+                plt.legend(loc="lower right")
+                
+                roc_path = "roc_curve.png"
+                plt.savefig(roc_path, dpi=150, bbox_inches='tight')
+                plt.close()
+                mlflow.log_artifact(roc_path, "plots")
+                os.remove(roc_path)
+                mlflow.log_metric("roc_auc", roc_auc)
+                logger.info("Logged ROC curve to MLflow")
+            except Exception as e:
+                logger.warning(f"Could not generate ROC curve: {e}")
+        
+        # Feature Importance (for XGBoost models)
+        try:
+            # Extract XGBoost model from pipeline if it's a pipeline
+            xgb_model = model
+            if hasattr(model, 'steps') and len(model.steps) > 0:
+                # Find XGBoost step in pipeline
+                for step_name, step_model in model.steps:
+                    if 'xgb' in step_name.lower() or isinstance(step_model, xgb.XGBClassifier):
+                        xgb_model = step_model
+                        break
+            
+            if hasattr(xgb_model, 'feature_importances_'):
+                feature_importance = xgb_model.feature_importances_
+                feature_names = X_test.columns.tolist()
+                
+                # Get top 20 features
+                top_n = min(20, len(feature_names))
+                top_indices = np.argsort(feature_importance)[-top_n:]
+                
+                plt.figure(figsize=(10, 8))
+                plt.barh(range(len(top_indices)), feature_importance[top_indices])
+                plt.yticks(range(len(top_indices)), [feature_names[i] for i in top_indices])
+                plt.xlabel('Importance')
+                plt.title(f'Top {top_n} Feature Importance')
+                plt.tight_layout()
+                
+                importance_path = "feature_importance.png"
+                plt.savefig(importance_path, dpi=150, bbox_inches='tight')
+                plt.close()
+                mlflow.log_artifact(importance_path, "plots")
+                os.remove(importance_path)
+                logger.info("Logged feature importance to MLflow")
+        except Exception as e:
+            logger.warning(f"Could not generate feature importance plot: {e}")
+        
+        logger.info("Visualization logging completed!")
+        
+    except Exception as e:
+        logger.warning(f"Failed to log visualizations to MLflow: {e}")
+
+
 def log_to_mlflow(
     config,
     model,
@@ -412,11 +536,30 @@ def log_to_mlflow(
         return
 
     try:
-        with mlflow.start_run():
+        # Create descriptive run name
+        run_name_prefix = "GridSearch" if use_grid_search else "DefaultParams"
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        run_name = f"{run_name_prefix}_{timestamp}"
+        
+        with mlflow.start_run(run_name=run_name):
             logger.info("Logging experiment to MLflow...")
+            logger.info(f"MLflow run name: {run_name}")
+
+            # Set tags for easy filtering and identification
+            if use_grid_search:
+                mlflow.set_tag("training_method", "grid_search")
+                mlflow.set_tag("hyperparameter_tuning", "true")
+            else:
+                mlflow.set_tag("training_method", "default_params")
+                mlflow.set_tag("hyperparameter_tuning", "false")
 
             # Log parameters
             logger.info("Logging parameters to MLflow...")
+            
+            # Log best parameters from grid search (if used) or default parameters (if not)
+            # When grid search is used: params contains best_params with xgb__ prefix
+            # When not used: params contains default params with xgb__ prefix added
+            # This ensures we only log the actual parameters used, avoiding duplicates
             for param_name, param_value in params.items():
                 mlflow.log_param(param_name, param_value)
 
@@ -424,12 +567,6 @@ def log_to_mlflow(
             data_split = config.get("data_split", {})
             mlflow.log_param("test_size", data_split.get("test_size", 0.3))
             mlflow.log_param("random_state", data_split.get("random_state", 42))
-
-            # Log model hyperparameters from config
-            xgb_params = config.get("xgboost", {}).get("default_params", {})
-            for param_name, param_value in xgb_params.items():
-                if param_name not in ["random_state", "eval_metric"]:
-                    mlflow.log_param(f"xgb_{param_name}", param_value)
 
             # Log feature engineering flags
             feature_config = config.get("feature_engineering", {})
@@ -442,10 +579,29 @@ def log_to_mlflow(
             smote_config = config.get("smote", {})
             mlflow.log_param("smote_enabled", smote_config.get("enabled", True))
 
-            # Log grid search info
+            # Log grid search info with detailed configuration
             mlflow.log_param("used_grid_search", use_grid_search)
-            if use_grid_search and best_cv_score is not None:
-                mlflow.log_metric("best_cv_f1_score", best_cv_score)
+            if use_grid_search:
+                grid_config = config.get("grid_search", {})
+                mlflow.log_param("grid_search_cv", grid_config.get("cv", 5))
+                mlflow.log_param("grid_search_scoring", grid_config.get("scoring", "f1"))
+                mlflow.log_param("grid_search_n_jobs", grid_config.get("n_jobs", -1))
+                
+                # Calculate and log number of parameter combinations searched
+                param_grid = grid_config.get("param_grid", {})
+                total_combinations = 1
+                for param_values in param_grid.values():
+                    if isinstance(param_values, list):
+                        total_combinations *= len(param_values)
+                mlflow.log_param("grid_search_total_combinations", total_combinations)
+                
+                # Log which parameters were searched
+                searched_params = list(param_grid.keys())
+                mlflow.log_param("grid_search_searched_params", str(searched_params))
+                
+                if best_cv_score is not None:
+                    mlflow.log_metric("best_cv_f1_score", best_cv_score)
+                    mlflow.set_tag("best_cv_score", f"{best_cv_score:.4f}")
 
             # Log metrics
             logger.info("Logging metrics to MLflow...")
@@ -463,9 +619,52 @@ def log_to_mlflow(
             # Log model
             if mlflow_config.get("log_model", True):
                 logger.info("Logging model to MLflow...")
-                mlflow.sklearn.log_model(
-                    model, "model", registered_model_name="XGBoost_Accident_Prediction"
+                # Get registered model name from config
+                registry_config = mlflow_config.get("model_registry", {})
+                registered_model_name = registry_config.get(
+                    "registered_model_name", "XGBoost_Accident_Prediction"
                 )
+                
+                # Log model to registry
+                mlflow.sklearn.log_model(
+                    model, "model", registered_model_name=registered_model_name
+                )
+                
+                # Get the version that was just created
+                try:
+                    from mlflow.tracking import MlflowClient
+                    client = MlflowClient()
+                    # Get the latest version (should be the one we just created)
+                    latest_versions = client.get_latest_versions(registered_model_name, stages=[])
+                    if latest_versions:
+                        model_version_num = latest_versions[0].version
+                        logger.info(
+                            f"Model registered as '{registered_model_name}' version {model_version_num}"
+                        )
+                        
+                        # Auto-transition to Staging if configured
+                        if registry_config.get("auto_transition_to_staging", False):
+                            try:
+                                client.transition_model_version_stage(
+                                    name=registered_model_name,
+                                    version=model_version_num,
+                                    stage="Staging"
+                                )
+                                logger.info(
+                                    f"Model version {model_version_num} automatically transitioned to Staging"
+                                )
+                            except Exception as e:
+                                logger.warning(
+                                    f"Failed to transition model to Staging: {e}. "
+                                    "You can manually transition using scripts/manage_model_registry.py"
+                                )
+                    else:
+                        logger.warning("Could not retrieve model version after registration")
+                except Exception as e:
+                    logger.warning(
+                        f"Could not retrieve model version or transition stage: {e}. "
+                        "Model was logged but version info unavailable."
+                    )
 
             # Log artifacts (metrics files, confusion matrix, etc.)
             if mlflow_config.get("log_artifacts", True):
@@ -473,6 +672,11 @@ def log_to_mlflow(
                 metrics_dir = config.get("paths", {}).get("metrics_dir", "data/metrics")
                 if os.path.exists(metrics_dir):
                     mlflow.log_artifacts(metrics_dir, "metrics")
+
+            # Log visualizations (confusion matrix, ROC curve, feature importance)
+            if mlflow_config.get("log_artifacts", True) and "y_pred" in metrics:
+                y_pred = np.array(metrics["y_pred"])
+                log_visualizations_to_mlflow(model, X_test, y_test, y_pred, config)
 
             logger.info("MLflow logging completed successfully!")
 
@@ -491,7 +695,7 @@ def save_metrics(
     use_grid_search=True,
 ):
     """
-    Save training metrics to JSON file.
+    Save training metrics to JSON file in DVC-compliant format.
 
     Parameters
     ----------
@@ -510,34 +714,86 @@ def save_metrics(
     """
     os.makedirs(output_dir, exist_ok=True)
 
-    # Create metrics dictionary with all information
-    metrics_dict = {
-        "timestamp": datetime.now().isoformat(),
-        "parameters": best_params,
-        "test_metrics": metrics,
-    }
+    # Create DVC-compliant metrics dictionary (only numeric values)
+    dvc_metrics = {}
 
+    # Main test metrics
+    dvc_metrics["test_accuracy"] = float(metrics["accuracy"])
+    dvc_metrics["test_precision"] = float(metrics["precision"])
+    dvc_metrics["test_recall"] = float(metrics["recall"])
+    dvc_metrics["test_f1_score"] = float(metrics["f1_score"])
+
+    # Extract classification report metrics
+    if "classification_report" in metrics:
+        report = metrics["classification_report"]
+        
+        # Per-class metrics
+        if "Non-Priority" in report:
+            np_metrics = report["Non-Priority"]
+            dvc_metrics["test_class_non_priority_precision"] = float(np_metrics.get("precision", 0.0))
+            dvc_metrics["test_class_non_priority_recall"] = float(np_metrics.get("recall", 0.0))
+            dvc_metrics["test_class_non_priority_f1_score"] = float(np_metrics.get("f1-score", 0.0))
+            dvc_metrics["test_class_non_priority_support"] = float(np_metrics.get("support", 0.0))
+        
+        if "Priority" in report:
+            p_metrics = report["Priority"]
+            dvc_metrics["test_class_priority_precision"] = float(p_metrics.get("precision", 0.0))
+            dvc_metrics["test_class_priority_recall"] = float(p_metrics.get("recall", 0.0))
+            dvc_metrics["test_class_priority_f1_score"] = float(p_metrics.get("f1-score", 0.0))
+            dvc_metrics["test_class_priority_support"] = float(p_metrics.get("support", 0.0))
+        
+        # Macro averages
+        if "macro avg" in report:
+            macro = report["macro avg"]
+            dvc_metrics["test_macro_avg_precision"] = float(macro.get("precision", 0.0))
+            dvc_metrics["test_macro_avg_recall"] = float(macro.get("recall", 0.0))
+            dvc_metrics["test_macro_avg_f1_score"] = float(macro.get("f1-score", 0.0))
+            dvc_metrics["test_macro_avg_support"] = float(macro.get("support", 0.0))
+        
+        # Weighted averages
+        if "weighted avg" in report:
+            weighted = report["weighted avg"]
+            dvc_metrics["test_weighted_avg_precision"] = float(weighted.get("precision", 0.0))
+            dvc_metrics["test_weighted_avg_recall"] = float(weighted.get("recall", 0.0))
+            dvc_metrics["test_weighted_avg_f1_score"] = float(weighted.get("f1-score", 0.0))
+            dvc_metrics["test_weighted_avg_support"] = float(weighted.get("support", 0.0))
+
+    # Extract confusion matrix values
+    if "confusion_matrix" in metrics:
+        cm = metrics["confusion_matrix"]
+        if isinstance(cm, list) and len(cm) == 2 and len(cm[0]) == 2:
+            # Binary classification: [[TN, FP], [FN, TP]]
+            dvc_metrics["test_confusion_matrix_tn"] = int(cm[0][0])
+            dvc_metrics["test_confusion_matrix_fp"] = int(cm[0][1])
+            dvc_metrics["test_confusion_matrix_fn"] = int(cm[1][0])
+            dvc_metrics["test_confusion_matrix_tp"] = int(cm[1][1])
+
+    # Cross-validation score
     if use_grid_search and best_cv_score is not None:
-        metrics_dict["best_cv_f1_score"] = float(best_cv_score)
-        metrics_dict["used_grid_search"] = True
-    else:
-        metrics_dict["used_grid_search"] = False
-        metrics_dict["note"] = "Trained with default parameters (no grid search)"
+        dvc_metrics["best_cv_f1_score"] = float(best_cv_score)
 
-    # Save to JSON file
+    # Add hyperparameters as metrics (with param_ prefix)
+    for param_name, param_value in best_params.items():
+        # Convert parameter name to metric-friendly format
+        metric_name = f"param_{param_name.replace('__', '_')}"
+        # Only include numeric parameters
+        if isinstance(param_value, (int, float)):
+            dvc_metrics[metric_name] = float(param_value)
+
+    # Save DVC-compliant metrics to JSON file
     metrics_file = os.path.join(output_dir, "training_metrics.json")
     with open(metrics_file, "w") as f:
-        json.dump(metrics_dict, f, indent=2)
+        json.dump(dvc_metrics, f, indent=2)
 
-    logger.info(f"Metrics saved to {metrics_file}")
+    logger.info(f"DVC-compliant metrics saved to {metrics_file}")
 
-    # Also save a human-readable text report
+    # Also save a human-readable text report (with all metadata)
     report_file = os.path.join(output_dir, "training_report.txt")
     with open(report_file, "w") as f:
         f.write("=" * 60 + "\n")
         f.write("Model Training Report\n")
         f.write("=" * 60 + "\n\n")
-        f.write(f"Timestamp: {metrics_dict['timestamp']}\n\n")
+        f.write(f"Timestamp: {datetime.now().isoformat()}\n\n")
         f.write("Model Parameters:\n")
         for param, value in best_params.items():
             f.write(f"  {param}: {value}\n")
@@ -563,8 +819,19 @@ def save_metrics(
             )
             f.write("\n")
 
-        f.write("Detailed Classification Report (JSON):\n")
-        f.write(json.dumps(metrics["classification_report"], indent=2))
+        if "classification_report" in metrics:
+            f.write("Detailed Classification Report (JSON):\n")
+            f.write(json.dumps(metrics["classification_report"], indent=2))
+            f.write("\n\n")
+
+        if "confusion_matrix" in metrics:
+            f.write("Confusion Matrix:\n")
+            cm = metrics["confusion_matrix"]
+            if isinstance(cm, list):
+                f.write(f"  True Negatives (TN):  {cm[0][0]}\n")
+                f.write(f"  False Positives (FP): {cm[0][1]}\n")
+                f.write(f"  False Negatives (FN): {cm[1][0]}\n")
+                f.write(f"  True Positives (TP):  {cm[1][1]}\n")
 
     logger.info(f"Training report saved to {report_file}")
 
