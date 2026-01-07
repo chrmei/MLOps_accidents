@@ -1,7 +1,8 @@
 schema: '2.0'
 stages:
   preprocess:
-    cmd: python src/data/make_dataset.py
+    cmd: bash -c 'set -a; [ -f .env ] && . .env || true; set +a; python 
+      src/data/make_dataset.py'
     deps:
     - path: data/raw
       hash: md5
@@ -18,7 +19,8 @@ stages:
       md5: 0793a947d82089ff3b8617d904461295
       size: 7959718
   build_features:
-    cmd: python src/features/build_features.py
+    cmd: bash -c 'set -a; [ -f .env ] && . .env || true; set +a; python 
+      src/features/build_features.py'
     deps:
     - path: data/preprocessed/interim_dataset.csv
       hash: md5
@@ -38,7 +40,8 @@ stages:
       md5: 6c3813a0ffaa347be23b1924dbf394c2
       size: 18263
   train_eval:
-    cmd: python src/models/train_model.py
+    cmd: bash -c 'set -a; [ -f .env ] && . .env || true; set +a; python 
+      src/models/train_model.py'
     deps:
     - path: data/preprocessed/features.csv
       hash: md5
@@ -46,8 +49,8 @@ stages:
       size: 12677276
     - path: src/models/train_model.py
       hash: md5
-      md5: 067551cb0132288c1d203193b47a860a
-      size: 24151
+      md5: 3a70721a85b545041296809de4cd1b21
+      size: 36976
     params:
       src/config/model_config.yaml:
         data_split:
@@ -100,6 +103,11 @@ stages:
           experiment_name: accident_prediction
           log_model: true
           log_artifacts: true
+          model_registry:
+            registered_model_name: XGBoost_Accident_Prediction
+            default_stage: None
+            auto_transition_to_staging: false
+            production_stage: Production
         model:
           type: xgboost
           name: XGBoost Baseline
@@ -116,30 +124,31 @@ stages:
           default_params:
             colsample_bytree: 0.7
             learning_rate: 0.05
-            max_depth: 4
+            max_depth: 5
             n_estimators: 1000
-            subsample: 0.8
+            subsample: 1.0
             random_state: 42
             eval_metric: logloss
     outs:
     - path: data/metrics/training_metrics.json
       hash: md5
-      md5: 901eb897fddd02aba46ec0001206ecf6
-      size: 1378
+      md5: f72eaedd95d6afbb34bb78ee5019bd5d
+      size: 1265
     - path: data/metrics/training_report.txt
       hash: md5
-      md5: 55c33741d23431f66fda8ebda166b1e4
-      size: 1520
+      md5: 64712a40c834f5a1b854c9bf82d57a45
+      size: 1655
     - path: models/trained_model.joblib
       hash: md5
-      md5: f45b15a45d3a4cddee8ca84921e4e9c4
-      size: 7235430
+      md5: fd263b36a301d8aeeb36a86cb44d9d56
+      size: 8062572
     - path: models/trained_model_metadata.joblib
       hash: md5
       md5: c740c14317ff5b5dd8c08524ba41c290
       size: 3495
   test_prediction:
-    cmd: python src/models/predict_model.py
+    cmd: bash -c 'set -a; [ -f .env ] && . .env || true; set +a; python 
+      src/models/predict_model.py'
     deps:
     - path: models/label_encoders.joblib
       hash: md5
@@ -147,16 +156,16 @@ stages:
       size: 18263
     - path: models/trained_model.joblib
       hash: md5
-      md5: f45b15a45d3a4cddee8ca84921e4e9c4
-      size: 7235430
+      md5: fd263b36a301d8aeeb36a86cb44d9d56
+      size: 8062572
     - path: models/trained_model_metadata.joblib
       hash: md5
       md5: c740c14317ff5b5dd8c08524ba41c290
       size: 3495
     - path: src/models/predict_model.py
       hash: md5
-      md5: 157d16a98c3801d3dbb945d4ecabebd3
-      size: 6024
+      md5: e7338af6322a1fa685e1b3049f76c088
+      size: 11774
     params:
       src/models/test_features.json:
         actp: 0

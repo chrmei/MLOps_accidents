@@ -11,15 +11,15 @@ xgboost:
   default_params:
     colsample_bytree: 0.7
     learning_rate: 0.05
-    max_depth: 4
-    n_estimators: 500
-    subsample: 0.8
+    max_depth: 5
+    n_estimators: 1000
+    subsample: 1.0
     random_state: 42
     eval_metric: "logloss"
 
 # Grid search parameters (for hyperparameter tuning)
 grid_search:
-  enabled: true  # Set to true to enable grid search
+  enabled: false  # Set to true to enable grid search
   cv: 5  # Number of cross-validation folds
   scoring: "f1"  # Scoring metric for grid search
   n_jobs: -1  # Use all available cores
@@ -75,4 +75,10 @@ mlflow:
   experiment_name: "accident_prediction"
   log_model: true
   log_artifacts: true
+  # Model Registry configuration
+  model_registry:
+    registered_model_name: "XGBoost_Accident_Prediction"
+    default_stage: "None"  # Options: None, Staging, Production, Archived
+    auto_transition_to_staging: false  # Auto-promote to Staging after registration
+    production_stage: "Production"  # Stage name for production models
 
