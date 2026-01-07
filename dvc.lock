@@ -124,11 +124,11 @@ stages:
     outs:
     - path: data/metrics/training_metrics.json
       hash: md5
-      md5: 8668f4687aafcfd050a297208a075ac2
+      md5: 63dc7b628be9ba86666b71814905c7b5
       size: 1378
     - path: data/metrics/training_report.txt
       hash: md5
-      md5: 9646f1b51b40846ec42f6d5fc6d362a8
+      md5: f13a4a3a10bf17e93b08c3a7affd182b
       size: 1520
     - path: models/trained_model.joblib
       hash: md5
