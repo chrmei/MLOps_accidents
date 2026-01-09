@@ -1,4 +1,4 @@
-.PHONY: help install install-dev sync lock update clean lint format type-check test test-cov run-import run-preprocess run-features run-train run-train-grid run-predict run-predict-file workflow-all workflow-data workflow-ml dvc-init dvc-setup-remote dvc-status dvc-push dvc-pull dvc-repro
+.PHONY: help install install-dev sync lock update clean lint format type-check test test-cov run-import run-preprocess run-features run-train run-train-grid run-predict run-predict-file workflow-all workflow-data workflow-ml dvc-init dvc-setup-remote dvc-status dvc-push dvc-pull dvc-repro docker-build docker-build-dev docker-build-prod docker-build-train docker-run-dev docker-run-prod docker-run-train docker-clean
 
 # Load .env file if it exists (cross-platform with GNU Make)
 # Note: On Windows, use Git Bash, WSL, or another Unix-like environment
@@ -200,3 +200,58 @@ dvc-repro: ## Reproduce DVC pipeline
 	@echo "Reproducing DVC pipeline..."
 	@$(DVC) repro
 
+# Docker commands
+docker-build: ## Build all Docker images (dev, prod, train)
+	@echo "Building all Docker images..."
+	docker build -t mlops-accidents:dev --target dev .
+# docker build -t mlops-accidents:prod --target prod .
+	docker build -t mlops-accidents:train --target train .
+	@echo "All Docker images built successfully!"
+
+docker-build-dev: ## Build development Docker image
+	@echo "Building development Docker image..."
+	docker build -t mlops-accidents:dev --target dev .
+
+# docker-build-prod: ## Build production Docker image
+# 	@echo "Building production Docker image..."
+# 	docker build -t mlops-accidents:prod --target prod .
+
+docker-build-train: ## Build training Docker image
+	@echo "Building training Docker image..."
+	docker build -t mlops-accidents:train --target train .
+
+docker-run-dev: ## Run development container with interactive bash shell
+	@echo "Starting development container (interactive)..."
+	docker run -it --rm -v $(PWD):/app mlops-accidents:dev
+
+docker-run-dev-detached: ## Run development container in background (detached mode)
+	@echo "Starting development container (detached)..."
+	docker run -d --rm -v $(PWD):/app --name mlops-dev mlops-accidents:dev tail -f /dev/null
+	@echo "Container 'mlops-dev' is running. Attach with: docker exec -it mlops-dev bash"
+	@echo "Stop with: docker stop mlops-dev"
+
+docker-run-dev-exec: ## Run command in dev container (usage: make docker-run-dev-exec CMD="python script.py")
+	@if [ -z "$(CMD)" ]; then \
+		echo "Error: CMD variable is required. Usage: make docker-run-dev-exec CMD=\"your command\""; \
+		exit 1; \
+	fi
+	@echo "Running command in container: $(CMD)"
+	docker run --rm -v $(PWD):/app mlops-accidents:dev bash -c "$(CMD)"
+
+# docker-run-prod: ## Run production inference container
+# 	@echo "Starting production container..."
+# 	docker run -it --rm -v $(PWD)/models:/app/models -v $(PWD)/data:/app/data mlops-accidents:prod
+
+docker-run-train: ## Run training pipeline in container (non-interactive)
+	@echo "Starting training container..."
+	docker run --rm -v $(PWD):/app mlops-accidents:train
+
+docker-run-train-interactive: ## Run training container with interactive shell
+	@echo "Starting training container (interactive)..."
+	docker run -it --rm -v $(PWD):/app mlops-accidents:train bash
+
+# update mlops-accidents:prod if prod target is uncommented in Dockerfile
+docker-clean: ## Remove all Docker images and containers
+	@echo "Cleaning up Docker images..."
+	docker rmi mlops-accidents:dev mlops-accidents:train 2>/dev/null || true
+	@echo "Cleanup complete!"
