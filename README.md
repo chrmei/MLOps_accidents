@@ -55,7 +55,7 @@ The ML pipeline follows a simple 5-step workflow from raw data to predictions:
          │
          ▼
 ┌─────────────────┐
-│  4. Training    │  Trains XGBoost model with SMOTE
+│  4. Training    │  Trains multiple models (XGBoost, RF, LR, LightGBM) with SMOTE
 └────────┬────────┘
          │
          ▼
@@ -71,7 +71,7 @@ The ML pipeline follows a simple 5-step workflow from raw data to predictions:
 | **1. Import** | `src/data/import_raw_data.py` | Downloads raw CSV files from S3 | `data/raw/*.csv` |
 | **2. Preprocess** | `src/data/make_dataset.py` | Merges 4 datasets, cleans data, creates target variable | `data/preprocessed/interim_dataset.csv` |
 | **3. Features** | `src/features/build_features.py` | Feature engineering: temporal, cyclic encoding, interactions | `data/preprocessed/features.csv` + `models/label_encoders.joblib` |
-| **4. Train** | `src/models/train_model.py` | Trains XGBoost model, saves model + metadata | `models/trained_model.joblib` + `models/trained_model_metadata.joblib` |
+| **4. Train** | `src/models/train_multi_model.py` | Trains multiple models, compares performance, saves models + metadata | `models/{model_type}_model.joblib` + `data/metrics/model_comparison.csv` |
 | **5. Predict** | `src/models/predict_model.py` | Loads model, preprocesses input, makes predictions | Prediction results |
 
 ### Supporting Utilities
@@ -410,18 +410,20 @@ Volumes used (from `docker-compose.yml`):
   - `data/preprocessed/features.csv` (feature-engineered dataset)
   - `models/label_encoders.joblib` (saved encoders for inference)
 
-#### Step 4: Model Training (`src/models/train_model.py`)
-- **Purpose**: Train XGBoost model with SMOTE for imbalanced data
+#### Step 4: Model Training (`src/models/train_multi_model.py`)
+- **Purpose**: Train multiple models (XGBoost, Random Forest, Logistic Regression, LightGBM) with SMOTE for imbalanced data
 - **Input**: `features.csv`
 - **Process**:
-  - Splits data into train/test sets
+  - Splits data into train/test sets (same split for all models for fair comparison)
   - Applies SMOTE (oversampling) to handle class imbalance
-  - Trains XGBoost classifier (with or without grid search)
-  - Evaluates model performance
+  - Trains multiple model types (with or without grid search)
+  - Evaluates each model's performance
+  - Generates model comparison report
 - **Output**:
-  - `models/trained_model.joblib` (trained model pipeline)
-  - `models/trained_model_metadata.joblib` (feature names, config)
-  - `data/metrics/` (evaluation metrics and reports)
+  - `models/{model_type}_model.joblib` (trained model pipelines, e.g., `xgboost_model.joblib`)
+  - `models/{model_type}_model_metadata.joblib` (feature names, config per model)
+  - `data/metrics/{model_type}_metrics.json` (evaluation metrics per model)
+  - `data/metrics/model_comparison.csv` (comparison report ranking models by F1 score)
 
 #### Step 5: Prediction (`src/models/predict_model.py`)
 - **Purpose**: Make predictions on new data
@@ -482,7 +484,7 @@ mlflow:
   log_model: true
   log_artifacts: true
   model_registry:
-    registered_model_name: "XGBoost_Accident_Prediction"
+    registered_model_name: "Accident_Prediction"  # Base name - model type will be appended automatically
     default_stage: "None"  # Options: None, Staging, Production, Archived
     auto_transition_to_staging: false  # Auto-promote to Staging after registration
     production_stage: "Production"
@@ -506,23 +508,28 @@ export DAGSHUB_REPO="yourusername/yourrepo"
 
 Or add to your `.env` file for persistence.
 
-#### Step 2: Train and Register a Model
+#### Step 2: Train and Register Models
 
-Train a new model - it will be automatically registered:
+Train models - they will be automatically registered:
 
 ```bash
-# Train a model (creates version 1)
+# Train multiple models (default - creates versions for each model type)
 make run-train
 
 # Or with grid search for hyperparameter tuning
-python src/models/train_model.py --grid-search
+make run-train-grid
+
+# Or train specific models only
+python src/models/train_multi_model.py --models xgboost random_forest
 ```
 
 **What happens:**
-- Model is trained and saved locally to `models/trained_model.joblib`
-- Model is automatically registered to MLflow Model Registry
-- New version is created (starts in "None" stage)
-- Metrics, parameters, and artifacts are logged to MLflow
+- Multiple models are trained (XGBoost, Random Forest, Logistic Regression, LightGBM by default)
+- Each model is saved locally to `models/{model_type}_model.joblib`
+- Each model is automatically registered to MLflow Model Registry with name `Accident_Prediction_{ModelType}`
+- New versions are created for each model (starts in "None" stage)
+- Metrics, parameters, and artifacts are logged to MLflow for each model
+- Model comparison report is generated at `data/metrics/model_comparison.csv`
 
 #### Step 3: Check Registered Models
 
@@ -534,7 +541,7 @@ python scripts/manage_model_registry.py list-models
 
 # See all versions of your specific model
 python scripts/manage_model_registry.py list-versions \
-  --model-name XGBoost_Accident_Prediction
+  --model-name Accident_Prediction_XGBoost
 ```
 
 #### Step 4: Move Model to Staging
@@ -544,7 +551,7 @@ After validating the model locally, promote it to Staging for testing:
 ```bash
 # Move version 1 to Staging
 python scripts/manage_model_registry.py transition \
-  --model-name XGBoost_Accident_Prediction \
+  --model-name Accident_Prediction_XGBoost \
   --version 1 \
   --stage Staging
 ```
@@ -556,7 +563,7 @@ Test the Staging model to ensure it works correctly:
 ```bash
 # Make predictions using Staging model
 python src/models/predict_model.py src/models/test_features.json \
-  --model-name XGBoost_Accident_Prediction \
+  --model-name Accident_Prediction_XGBoost \
   --stage Staging
 ```
 
@@ -567,12 +574,12 @@ Once testing passes, promote to Production:
 ```bash
 # Option A: Promote latest version (recommended)
 python scripts/manage_model_registry.py promote \
-  --model-name XGBoost_Accident_Prediction \
+  --model-name Accident_Prediction_XGBoost \
   --stage Production
 
 # Option B: Promote specific version
 python scripts/manage_model_registry.py transition \
-  --model-name XGBoost_Accident_Prediction \
+  --model-name Accident_Prediction_XGBoost \
   --version 1 \
   --stage Production
 ```
@@ -584,7 +591,7 @@ In production environments, always load from the Production stage:
 ```bash
 # Load from Production stage (recommended)
 python src/models/predict_model.py src/models/test_features.json \
-  --model-name XGBoost_Accident_Prediction \
+  --model-name Accident_Prediction_XGBoost \
   --stage Production
 ```
 
@@ -595,7 +602,7 @@ When a model is deprecated, archive it (don't delete - maintains history):
 ```bash
 # Archive old version
 python scripts/manage_model_registry.py archive \
-  --model-name XGBoost_Accident_Prediction \
+  --model-name Accident_Prediction_XGBoost \
   --version 1
 ```
 
@@ -609,33 +616,33 @@ export DAGSHUB_REPO="yourusername/yourrepo"
 
 # 2. Train a new model
 make run-train
-# Output: Model registered as 'XGBoost_Accident_Prediction' version 1
+# Output: Model registered as 'Accident_Prediction_XGBoost' version 1
 
 # 3. Check what was registered
 python scripts/manage_model_registry.py list-versions \
-  --model-name XGBoost_Accident_Prediction
+  --model-name Accident_Prediction_XGBoost
 # You'll see version 1 in "None" stage
 
 # 4. Move to Staging for testing
 python scripts/manage_model_registry.py transition \
-  --model-name XGBoost_Accident_Prediction \
+  --model-name Accident_Prediction_XGBoost \
   --version 1 \
   --stage Staging
 
 # 5. Test the Staging model
 python src/models/predict_model.py src/models/test_features.json \
-  --model-name XGBoost_Accident_Prediction \
+  --model-name Accident_Prediction_XGBoost \
   --stage Staging
 
 # 6. If tests pass, promote to Production
 python scripts/manage_model_registry.py transition \
-  --model-name XGBoost_Accident_Prediction \
+  --model-name Accident_Prediction_XGBoost \
   --version 1 \
   --stage Production
 
 # 7. Use Production model
 python src/models/predict_model.py src/models/test_features.json \
-  --model-name XGBoost_Accident_Prediction \
+  --model-name Accident_Prediction_XGBoost \
   --stage Production
 
 # 8. Later, train a better model (creates version 2)
@@ -643,13 +650,13 @@ make run-train
 
 # 9. After validating version 2, promote it
 python scripts/manage_model_registry.py promote \
-  --model-name XGBoost_Accident_Prediction \
+  --model-name Accident_Prediction_XGBoost \
   --stage Production
 # This moves version 2 to Production
 
 # 10. Archive old version 1
 python scripts/manage_model_registry.py archive \
-  --model-name XGBoost_Accident_Prediction \
+  --model-name Accident_Prediction_XGBoost \
   --version 1
 ```
 
@@ -673,7 +680,7 @@ Use the `scripts/manage_model_registry.py` script to manage models:
 python scripts/manage_model_registry.py list-models
 
 # List all versions of a specific model
-python scripts/manage_model_registry.py list-versions --model-name XGBoost_Accident_Prediction
+python scripts/manage_model_registry.py list-versions --model-name Accident_Prediction_XGBoost
 ```
 
 #### Transition Models Between Stages
@@ -681,18 +688,18 @@ python scripts/manage_model_registry.py list-versions --model-name XGBoost_Accid
 ```bash
 # Transition a specific version to Production
 python scripts/manage_model_registry.py transition \
-  --model-name XGBoost_Accident_Prediction \
+  --model-name Accident_Prediction_XGBoost \
   --version 1 \
   --stage Production
 
 # Promote latest version to Production
 python scripts/manage_model_registry.py promote \
-  --model-name XGBoost_Accident_Prediction \
+  --model-name Accident_Prediction_XGBoost \
   --stage Production
 
 # Archive an old version
 python scripts/manage_model_registry.py archive \
-  --model-name XGBoost_Accident_Prediction \
+  --model-name Accident_Prediction_XGBoost \
   --version 1
 ```
 
@@ -701,7 +708,7 @@ python scripts/manage_model_registry.py archive \
 ```bash
 # Get model info by stage
 python scripts/manage_model_registry.py get-model \
-  --model-name XGBoost_Accident_Prediction \
+  --model-name Accident_Prediction_XGBoost \
   --stage Production
 ```
 
@@ -712,17 +719,17 @@ The prediction script (`src/models/predict_model.py`) supports loading models fr
 ```bash
 # Load from Production stage
 python src/models/predict_model.py src/models/test_features.json \
-  --model-name XGBoost_Accident_Prediction \
+  --model-name Accident_Prediction_XGBoost \
   --stage Production
 
 # Load specific version
 python src/models/predict_model.py src/models/test_features.json \
-  --model-name XGBoost_Accident_Prediction \
+  --model-name Accident_Prediction_XGBoost \
   --version 1
 
-# Load from local filesystem (default)
+# Load from local filesystem (default - uses xgboost model)
 python src/models/predict_model.py src/models/test_features.json \
-  --model-path models/trained_model.joblib
+  --model-path models/xgboost_model.joblib
 ```
 
 ### Automatic Staging Transitions
@@ -753,29 +760,78 @@ export DAGSHUB_REPO="username/repo"
 
 The tracking URI can also be set in `model_config.yaml`, but environment variables take precedence.
 
+## 🔄 Multi-Model Training Framework
+
+**The multi-model training framework is now the default training method.** The project includes a standardized framework for training and comparing multiple ML models. This framework enables easy experimentation with different algorithms (XGBoost, Random Forest, Logistic Regression, LightGBM) and automatic comparison of their performance.
+
+### Features
+
+- **Standardized Training**: All models use the same train/test split for fair comparison
+- **MLflow Integration**: Models are automatically logged with type-specific tags for easy filtering
+- **Model Registry**: Each model type gets its own registered model name (format: `Accident_Prediction_{ModelType}`)
+- **Automatic Comparison**: Generates comparison reports ranking models by performance metrics
+- **Extensible**: Easy to add new model types by creating a trainer class
+- **Default Training**: Used by default in `make run-train` and DVC pipeline
+
+### Quick Start
+
+```bash
+# Train all enabled models (default)
+make run-train
+
+# Train with grid search for hyperparameter tuning
+make run-train-grid
+
+# Train specific models only
+python src/models/train_multi_model.py --models xgboost random_forest
+
+# Train single model (legacy mode)
+make run-train-single
+```
+
+### Output Files
+
+After training, you'll find:
+- **Models**: `models/{model_type}_model.joblib` (e.g., `models/xgboost_model.joblib`)
+- **Metadata**: `models/{model_type}_model_metadata.joblib`
+- **Metrics**: `data/metrics/{model_type}_metrics.json`
+- **Comparison**: `data/metrics/model_comparison.csv` (ranks models by F1 score)
+
+### Model Names in Registry
+
+Models are registered with the format `Accident_Prediction_{ModelType}`:
+- `Accident_Prediction_XGBoost`
+- `Accident_Prediction_Random_Forest`
+- `Accident_Prediction_Logistic_Regression`
+- `Accident_Prediction_Lightgbm`
+
+This naming convention groups all models under the project prefix for easy identification in MLflow.
+
+For detailed documentation on the multi-model training framework, including how to add new models, see the [Multi-Model Training README](src/models/README_MULTI_MODEL.md).
+
 ### Quick Reference: Common Commands
 
 ```bash
 # LIST MODELS
 python scripts/manage_model_registry.py list-models
-python scripts/manage_model_registry.py list-versions --model-name XGBoost_Accident_Prediction
+python scripts/manage_model_registry.py list-versions --model-name Accident_Prediction_XGBoost
 
 # TRANSITION STAGES
-python scripts/manage_model_registry.py transition --model-name XGBoost_Accident_Prediction --version 1 --stage Staging
-python scripts/manage_model_registry.py transition --model-name XGBoost_Accident_Prediction --version 1 --stage Production
+python scripts/manage_model_registry.py transition --model-name Accident_Prediction_XGBoost --version 1 --stage Staging
+python scripts/manage_model_registry.py transition --model-name Accident_Prediction_XGBoost --version 1 --stage Production
 
 # PROMOTE LATEST VERSION
-python scripts/manage_model_registry.py promote --model-name XGBoost_Accident_Prediction --stage Production
+python scripts/manage_model_registry.py promote --model-name Accident_Prediction_XGBoost --stage Production
 
 # ARCHIVE OLD MODEL
-python scripts/manage_model_registry.py archive --model-name XGBoost_Accident_Prediction --version 1
+python scripts/manage_model_registry.py archive --model-name Accident_Prediction_XGBoost --version 1
 
 # GET MODEL INFO
-python scripts/manage_model_registry.py get-model --model-name XGBoost_Accident_Prediction --stage Production
+python scripts/manage_model_registry.py get-model --model-name Accident_Prediction_XGBoost --stage Production
 
 # USE IN PREDICTIONS
-python src/models/predict_model.py file.json --model-name XGBoost_Accident_Prediction --stage Production
-python src/models/predict_model.py file.json --model-name XGBoost_Accident_Prediction --version 1
+python src/models/predict_model.py file.json --model-name Accident_Prediction_XGBoost --stage Production
+python src/models/predict_model.py file.json --model-name Accident_Prediction_XGBoost --version 1
 python src/models/predict_model.py file.json --model-path models/trained_model.joblib  # Local filesystem
 ```
 
@@ -811,12 +867,13 @@ The project is designed for a 3-person team with clear separation of concerns:
 
 **ML Modeling & Tracking (Engineer B) Progress:**
 - ✅ Feature engineering pipeline (`build_features.py`, `preprocess.py`)
-- ✅ Model training script (`train_model.py`) with XGBoost + SMOTE
+- ✅ Multi-model training framework (`train_multi_model.py`) with XGBoost, Random Forest, Logistic Regression, LightGBM + SMOTE
 - ✅ Model prediction script (`predict_model.py`) with preprocessing
-- ✅ Model artifacts and metadata saving
+- ✅ Model artifacts and metadata saving (per-model files)
 - ✅ **ML-0**: XGBoost baseline model implemented
 - ✅ **ML-1**: Config-driven training (`model_config.yaml` created)
 - ✅ **ML-2**: MLflow integration for experiment tracking and model registry
+- ✅ **Multi-Model Framework**: Standardized framework for training and comparing multiple models
 - 🚧 **ML-3**: DVC metrics format and confusion matrix
 - 🚧 **TEST-1**: Unit tests for model training and prediction
 
