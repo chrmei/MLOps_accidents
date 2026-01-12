@@ -322,6 +322,58 @@ Run `make help` to see all commands. Key commands:
 
 > **Important**: For `make dvc-setup-remote`, you must first manually edit `.env` with your Dagshub credentials (copy from `.env.example`).
 
+## 🐳 Docker Setup
+
+**Build images**
+- Dev: `make docker-build-dev`
+- Train: `make docker-build-train`
+- Prod (optional): Uncomment the prod stage in Dockerfile and `docker-build-prod` target in Makefile, then run `make docker-build-prod`
+
+**Run containers (Make targets)**
+- Dev interactive shell: `make docker-run-dev`
+- Dev detached (background): `make docker-run-dev-detached` (attach later with `docker exec -it mlops-dev bash`)
+- Dev one-off command: `make docker-run-dev-exec CMD="python src/models/predict_model.py"`
+- Train non-interactive: `make docker-run-train`
+- Train interactive shell: `make docker-run-train-interactive`
+
+**Direct docker examples**
+- Dev shell: `docker run -it --rm -v $(PWD):/app mlops-accidents:dev`
+- Train: `docker run --rm -v $(PWD):/app mlops-accidents:train`
+- Prod (after enabling prod stage): `docker run --rm -v $(PWD)/models:/app/models -v $(PWD)/data:/app/data mlops-accidents:prod python src/models/predict_model.py src/models/test_features.json`
+
+## 🧩 Docker Compose
+
+> Note: The compose file includes `prod`, but the prod stage in Dockerfile is commented. Enable it before using `prod` service.
+
+Common commands:
+- Build all services: `docker compose build`
+- Start dev shell: `docker compose up dev`
+- Run training: `docker compose up train`
+- Start prod (after enabling prod stage): `docker compose up prod`
+- Tail logs: `docker compose logs -f train`
+- Stop everything: `docker compose down`
+
+Profiles:
+- Data sync via DVC: `docker compose --profile dvc up dvc-pull`
+
+Volumes used (from `docker-compose.yml`):
+- Project code mounted into `/app` for dev/train
+- `./models` and `./data` mounted read-only for prod
+
+## 🚀 Production Deployment (template)
+
+1) **Enable prod stage**
+- Uncomment the prod stage in Dockerfile
+- Uncomment `docker-build-prod` and `docker-run-prod` targets in Makefile (if desired)
+
+2) **Build and run**
+- Build: `make docker-build-prod` (or `docker compose build prod`)
+- Run local inference: `docker run --rm -v $(PWD)/models:/app/models -v $(PWD)/data:/app/data mlops-accidents:prod python src/models/predict_model.py src/models/test_features.json`
+
+3) **Expose API (next step)**
+- Replace the prod `CMD` with a FastAPI/uvicorn command when the API is added
+- Keep healthchecks in compose for readiness/liveness
+
 ## 🔄 Workflow
 
 ### Detailed Pipeline Steps

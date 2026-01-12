@@ -1,0 +1,68 @@
+version: '3.8'
+
+services:
+  # Development environment
+  dev:
+    build:
+      context: .
+      target: dev
+    container_name: mlops-dev
+    volumes:
+      - .:/app
+      - ~/.dvc:/home/mlops/.dvc:ro
+    environment:
+      - PYTHONUNBUFFERED=1
+    stdin_open: true
+    tty: true
+    command: bash
+
+  # Training pipeline
+  train:
+    build:
+      context: .
+      target: train
+    container_name: mlops-train
+    volumes:
+      - .:/app
+      - ./models:/app/models
+      - ./data:/app/data
+      - ~/.dvc:/home/mlops/.dvc:ro
+    environment:
+      - PYTHONUNBUFFERED=1
+      - NOCONFIRM=1
+    depends_on:
+      - dvc-pull
+
+  # # Inference/prediction service
+  # prod:
+  #   build:
+  #     context: .
+  #     target: prod
+  #   container_name: mlops-prod
+  #   volumes:
+  #     - ./models:/app/models:ro
+  #     - ./data:/app/data:ro
+  #   environment:
+  #     - PYTHONUNBUFFERED=1
+  #   ports:
+  #     - "8000:8000"
+  #   healthcheck:
+  #     test: ["CMD", "python", "-c", "import sys; sys.exit(0)"]
+  #     interval: 30s
+  #     timeout: 10s
+  #     retries: 3
+
+  # DVC pull service (optional, for data sync)
+  dvc-pull:
+    build:
+      context: .
+      target: dev
+    container_name: mlops-dvc-pull
+    volumes:
+      - .:/app
+      - ~/.dvc:/home/mlops/.dvc
+    environment:
+      - PYTHONUNBUFFERED=1
+    command: dvc pull
+    profiles:
+      - dvc
