@@ -179,11 +179,18 @@ class RandomForestTrainer(BaseTrainer):
 
             # Get grid search config
             grid_config = self.config.get("grid_search", {})
-            param_grid = grid_config.get("param_grid_rf", {})
+            param_grid = grid_config.get("param_grid_rf", {}).copy()
             cv = grid_config.get("cv", 5)
             scoring = grid_config.get("scoring", "f1")
             n_jobs = grid_config.get("n_jobs", -1)
             verbose = grid_config.get("verbose", 1)
+
+            # Fix None values: convert string 'None' or YAML null to Python None
+            if "rf__max_depth" in param_grid:
+                param_grid["rf__max_depth"] = [
+                    None if (v is None or v == "None" or str(v).lower() == "none") else v
+                    for v in param_grid["rf__max_depth"]
+                ]
 
             grid_search = GridSearchCV(
                 pipeline, param_grid, cv=cv, scoring=scoring, n_jobs=n_jobs, verbose=verbose
@@ -241,8 +248,8 @@ class LogisticRegressionTrainer(BaseTrainer):
     def _get_default_params(self) -> Dict:
         """Get default Logistic Regression parameters from config."""
         lr_config = self.config.get("logistic_regression", {}).get("default_params", {})
-        # Remove random_state as it's handled separately
-        params = {k: v for k, v in lr_config.items() if k != "random_state"}
+        # Remove random_state and max_iter as they're handled separately
+        params = {k: v for k, v in lr_config.items() if k not in ["random_state", "max_iter"]}
         return params
 
     def _build_model(
@@ -274,11 +281,49 @@ class LogisticRegressionTrainer(BaseTrainer):
 
             # Get grid search config
             grid_config = self.config.get("grid_search", {})
-            param_grid = grid_config.get("param_grid_lr", {})
+            param_grid_raw = grid_config.get("param_grid_lr", {}).copy()
             cv = grid_config.get("cv", 5)
             scoring = grid_config.get("scoring", "f1")
             n_jobs = grid_config.get("n_jobs", -1)
             verbose = grid_config.get("verbose", 1)
+
+            # Create conditional parameter grid to avoid incompatible solver/penalty combinations
+            # lbfgs only supports l2 penalty, liblinear supports both l1 and l2
+            from sklearn.model_selection import ParameterGrid
+            
+            solvers = param_grid_raw.get("lr__solver", ["lbfgs"])
+            penalties = param_grid_raw.get("lr__penalty", ["l2"])
+            
+            # Build base parameter dict (excluding solver and penalty)
+            base_params = {k: v for k, v in param_grid_raw.items() 
+                          if k not in ["lr__solver", "lr__penalty"]}
+            
+            # Generate all valid solver/penalty combinations
+            valid_solver_penalty = []
+            for solver in solvers:
+                for penalty in penalties:
+                    # Skip incompatible combinations
+                    if solver == "lbfgs" and penalty == "l1":
+                        continue
+                    valid_solver_penalty.append((solver, penalty))
+            
+            # Build parameter grid: expand base params and add valid solver/penalty combos
+            if base_params:
+                # Expand base parameter grid
+                base_grid = list(ParameterGrid(base_params))
+                param_grid = []
+                for base_combo in base_grid:
+                    for solver, penalty in valid_solver_penalty:
+                        combo = base_combo.copy()
+                        combo["lr__solver"] = solver
+                        combo["lr__penalty"] = penalty
+                        param_grid.append(combo)
+            else:
+                # Only solver and penalty parameters
+                param_grid = [
+                    {"lr__solver": solver, "lr__penalty": penalty}
+                    for solver, penalty in valid_solver_penalty
+                ]
 
             grid_search = GridSearchCV(
                 pipeline, param_grid, cv=cv, scoring=scoring, n_jobs=n_jobs, verbose=verbose

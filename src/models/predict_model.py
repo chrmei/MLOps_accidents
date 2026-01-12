@@ -151,7 +151,9 @@ def load_model_artifacts(model_path: str):
     logger.info(f"Loaded model from {model_path}")
 
     # Load label encoders
-    encoders_path = model_path.replace("trained_model.joblib", "label_encoders.joblib")
+    # Try to find label encoders in the same directory as the model
+    model_dir = os.path.dirname(model_path)
+    encoders_path = os.path.join(model_dir, "label_encoders.joblib")
     label_encoders = None
     if os.path.exists(encoders_path):
         label_encoders = joblib.load(encoders_path)
@@ -159,12 +161,20 @@ def load_model_artifacts(model_path: str):
     else:
         logger.warning(f"Label encoders not found at {encoders_path}")
 
-    # Load feature metadata
-    metadata_path = model_path.replace("trained_model.joblib", "trained_model_metadata.joblib")
+    # Load feature metadata - use the same pattern as base_trainer.py
+    metadata_path = model_path.replace(".joblib", "_metadata.joblib")
     metadata = None
     if os.path.exists(metadata_path):
-        metadata = joblib.load(metadata_path)
-        logger.info(f"Loaded feature metadata from {metadata_path}")
+        loaded_metadata = joblib.load(metadata_path)
+        # Ensure metadata is a dictionary (not a Pipeline or other object)
+        if isinstance(loaded_metadata, dict):
+            metadata = loaded_metadata
+            logger.info(f"Loaded feature metadata from {metadata_path}")
+        else:
+            logger.warning(
+                f"Metadata file exists but is not a dictionary (type: {type(loaded_metadata)}). "
+                "Using default preprocessing settings."
+            )
     else:
         logger.warning(f"Feature metadata not found at {metadata_path}")
 
@@ -187,8 +197,8 @@ def get_expected_features(model, metadata=None):
     list
         List of expected feature names
     """
-    # Try metadata first
-    if metadata and "feature_names" in metadata:
+    # Try metadata first (ensure it's a dictionary)
+    if metadata and isinstance(metadata, dict) and "feature_names" in metadata:
         return metadata["feature_names"]
 
     # Try to extract from model
@@ -250,10 +260,20 @@ def predict(
         model, label_encoders, metadata = load_model_artifacts(model_path)
 
     # Get preprocessing parameters from metadata or use defaults
+    # Ensure metadata is a dictionary before accessing it
+    if metadata and not isinstance(metadata, dict):
+        logger.warning(
+            f"Metadata is not a dictionary (type: {type(metadata)}). "
+            "Using default preprocessing settings."
+        )
+        metadata = None
+    
     apply_cyclic_encoding = (
-        metadata.get("apply_cyclic_encoding", True) if metadata else True
+        metadata.get("apply_cyclic_encoding", True) if isinstance(metadata, dict) else True
     )
-    apply_interactions = metadata.get("apply_interactions", True) if metadata else True
+    apply_interactions = (
+        metadata.get("apply_interactions", True) if isinstance(metadata, dict) else True
+    )
 
     # Preprocess features
     logger.info("Preprocessing input features...")
