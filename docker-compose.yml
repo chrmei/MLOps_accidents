@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   # Development environment
   dev:
@@ -63,6 +61,6 @@ services:
       - ~/.dvc:/home/mlops/.dvc
     environment:
       - PYTHONUNBUFFERED=1
-    command: dvc pull
+    command: dvc pull --force
     profiles:
       - dvc
