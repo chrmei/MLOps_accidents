@@ -9,11 +9,13 @@ import pandas as pd
 
 try:
     from .check_structure import check_existing_file, check_existing_folder
+    from .data_schemas import UserSchema, CharactSchema, VehicleSchema, PlaceSchema
 except ImportError:
     from check_structure import (  # type: ignore[import-not-found,no-redef]
         check_existing_file,
         check_existing_folder,
     )
+    from data_schemas import UserSchema, CharactSchema, VehicleSchema, PlaceSchema
 
 # Note: train_test_split moved to model training pipeline
 # Interim dataset is saved instead of train/test split
@@ -91,6 +93,20 @@ def process_data(
     df_caract = pd.read_csv(input_filepath_caract, sep=";", header=0, low_memory=False)
     df_places = pd.read_csv(input_filepath_places, sep=";", encoding="utf-8")
     df_veh = pd.read_csv(input_filepath_veh, sep=";")
+
+    # --Validating datasets
+    logger.info("Validating raw datasets against their schemas:")
+    UserSchema.validate(df_users)
+    logger.info("UserSchema validation passed")
+
+    CharactSchema.validate(df_caract)
+    logger.info("CharactSchema validation passed")
+
+    PlaceSchema.validate(df_places)
+    logger.info("PlaceSchema validation passed")
+    
+    VehicleSchema.validate(df_veh)
+    logger.info("VehicleSchema validation passed")
 
     # --Creating new columns
     nb_victim = pd.crosstab(df_users.Num_Acc, "count").reset_index()
