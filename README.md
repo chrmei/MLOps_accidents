@@ -1,18 +1,21 @@
 # 🚦 MLOps Road Accident Prediction
 
-A containerized MLOps project for predicting road accidents using machine learning. This project implements a complete MLOps workflow from data ingestion to model serving, with a focus on reproducibility, versioning, and best practices.
+A **containerized** MLOps project for predicting road accidents using machine learning. This project implements a complete MLOps workflow from data ingestion to model serving, with a focus on **reproducibility, versioning, and containerization**.
 
 ## 📋 Table of Contents
 
 - [Project Overview](#project-overview)
+- [🐳 Docker & Containerization](#-docker--containerization) ⭐ **Start Here**
 - [Pipeline Overview](#pipeline-overview)
 - [Current State](#current-state)
+- [Getting Started](#getting-started)
 - [Project Structure](#project-structure)
 - [Technology Stack](#technology-stack)
-- [Getting Started](#getting-started)
 - [Workflow](#workflow)
-- [Team Structure](#team-structure)
-- [Roadmap](#roadmap)
+- [MLflow Model Registry](#-mlflow-model-registry)
+- [Multi-Model Training Framework](#-multi-model-training-framework)
+- [Team Structure](#-team-structure)
+- [Roadmap](#-roadmap)
 - [Contributing](#contributing)
 - [License](#license)
 
@@ -20,19 +23,123 @@ A containerized MLOps project for predicting road accidents using machine learni
 
 This project is an MLOps implementation for road accident prediction, designed as a learning and production-ready template. The system processes road accident data from multiple sources, trains machine learning models to predict accident severity, and serves predictions through a REST API.
 
-### Objectives
+### Core Principles
 
-- **Reproducibility**: Ensure all experiments and workflows can be reproduced across different environments
-- **Versioning**: Track data, models, and experiments using DVC and MLflow
-- **Containerization**: Isolate environments using Docker for consistent deployments
-- **Automation**: Implement CI/CD pipelines for testing, linting, and deployment
-- **Monitoring**: Track model performance and detect data drift in production
+- **🔒 Containerization First**: All workflows run in Docker containers for environment parity
+- **📊 Reproducibility**: Ensure all experiments and workflows can be reproduced across different environments
+- **📦 Versioning**: Track data, models, and experiments using DVC and MLflow
+- **🤖 Automation**: Implement CI/CD pipelines for testing, linting, and deployment
+- **📈 Monitoring**: Track model performance and detect data drift in production
 
 ### Success Metrics
 
 - **Model Performance**: F1 Score, Precision, and Recall for accident severity classification
 - **Baseline Model**: XGBoost with optimized parameters as initial benchmark
 - **Minimum Performance Threshold**: To be defined based on baseline results
+
+## 🐳 Docker & Containerization
+
+> **⭐ This project is designed to run in Docker containers. Docker ensures environment parity across development, training, and production.**
+
+The project uses a **multi-stage Dockerfile** with three stages:
+- **`dev`**: Development environment with all tools and dependencies
+- **`train`**: Training pipeline container for model training
+- **`prod`**: Production container for inference (commented out, ready for FastAPI)
+
+### Quick Start with Docker
+
+**Option 1: Docker Compose (Recommended)**
+
+```bash
+# Build all services
+docker compose build
+
+# Start development shell
+docker compose up dev
+
+# Run training pipeline
+docker compose up train
+
+# Pull data/models via DVC (if configured)
+docker compose --profile dvc up dvc-pull
+# Or using Makefile:
+make docker-dvc-pull
+```
+
+**Option 2: Makefile Commands**
+
+```bash
+# Build images
+make docker-build-dev      # Development image
+make docker-build-train     # Training image
+
+# Run containers
+make docker-run-dev                    # Interactive dev shell
+make docker-run-train                  # Run training pipeline
+make docker-run-dev-exec CMD="..."    # Run one-off command
+make docker-dvc-pull                   # Pull data/models from DVC remote
+```
+
+**Option 3: Direct Docker Commands**
+
+```bash
+# Development shell
+docker run -it --rm -v $(PWD):/app mlops-accidents:dev
+
+# Training pipeline
+docker run --rm -v $(PWD):/app mlops-accidents:train
+```
+
+### Docker Compose Services
+
+The `docker-compose.yml` defines three services:
+
+| Service | Purpose | Usage |
+|---------|---------|-------|
+| **`dev`** | Development environment | Interactive shell for development and testing |
+| **`train`** | Training pipeline | Runs complete ML training workflow |
+| **`dvc-pull`** | Data sync | Pulls data from DVC remote (optional profile) |
+
+### Running the Pipeline in Docker
+
+```bash
+# Pull latest data/models from DVC (if configured)
+make docker-dvc-pull
+# Or: docker compose --profile dvc up dvc-pull
+
+# Complete workflow in Docker
+docker compose up train
+
+# Or step-by-step in dev container
+docker compose up dev
+# Inside container:
+make run-import      # Step 1: Download data
+make run-preprocess  # Step 2: Clean & merge
+make run-features    # Step 3: Feature engineering
+make run-train       # Step 4: Train models
+make run-predict     # Step 5: Make predictions
+```
+
+### Volume Mounts
+
+- **`.:/app`**: Project code mounted for dev/train (read-write)
+- **`./models:/app/models`**: Model artifacts (read-write for train, read-only for prod)
+- **`./data:/app/data`**: Data directory (read-write for train, read-only for prod)
+- **`~/.dvc:/home/mlops/.dvc`**: DVC configuration (read-only for dev/train)
+
+### Production Deployment (Template)
+
+The production stage is commented out in the Dockerfile. To enable:
+
+1. **Uncomment prod stage** in `Dockerfile`
+2. **Uncomment prod service** in `docker-compose.yml` (if using compose)
+3. **Build and run**:
+   ```bash
+   make docker-build-prod
+   docker run --rm -v $(PWD)/models:/app/models:ro -v $(PWD)/data:/app/data:ro mlops-accidents:prod
+   ```
+
+> **Note**: The prod stage will be updated to run FastAPI when the API is implemented (Phase 1).
 
 ## 🔄 Pipeline Overview
 
@@ -94,43 +201,177 @@ make run-predict     # Step 5: Make predictions
 
 ## 📊 Current State
 
-**Phase**: Phase 1 - Foundations (Deadline: December 19th)
+**Phase**: Phase 1 - Foundations (Deadline: December 19th, 2024)
 
 ### ✅ Completed
 
 **Project Foundation:**
-- Project structure based on cookiecutter-data-science template
-- Reproducible Python environment setup with `pyproject.toml` and UV
-- Development automation with Makefile
-- Python version management (`.python-version`, `.tool-versions`)
-- Initial data exploration notebook
+- ✅ Project structure based on cookiecutter-data-science template
+- ✅ Reproducible Python environment setup with `pyproject.toml` and UV
+- ✅ Development automation with Makefile
+- ✅ Python version management (`.python-version`, `.tool-versions`)
+- ✅ Initial data exploration notebook
+
+**Containerization (Engineer C):**
+- ✅ **Multi-stage Dockerfile**: Dev, train, and prod stages implemented
+- ✅ **Docker Compose**: Services for dev, train, and dvc-pull configured
+- ✅ **Volume mounts**: Proper data and model persistence
+- 🚧 **Production stage**: Template ready, awaiting FastAPI implementation
 
 **ML Modeling & Tracking (Engineer B):**
 - ✅ **Feature Engineering Pipeline**: Complete feature engineering module (`build_features.py`) with temporal features, cyclic encoding, categorical transformations, and interactions
 - ✅ **Preprocessing Utilities**: Reusable preprocessing functions (`preprocess.py`) ensuring training/inference consistency
-- ✅ **Model Training**: XGBoost model training script (`train_model.py`) with SMOTE pipeline, grid search support, and metrics evaluation
+- ✅ **Model Training**: Multi-model training framework (`train_multi_model.py`) with XGBoost, Random Forest, Logistic Regression, LightGBM + SMOTE
 - ✅ **Model Prediction**: Inference script (`predict_model.py`) with feature preprocessing and model artifact loading
-- ✅ **Model Artifacts**: Model and metadata saving (trained_model.joblib, label_encoders.joblib, trained_model_metadata.joblib)
+- ✅ **Model Artifacts**: Model and metadata saving (per-model files: `{model_type}_model.joblib`, `label_encoders.joblib`, `{model_type}_model_metadata.joblib`)
 - ✅ **Metrics Saving**: Evaluation metrics saved to files (accuracy, precision, recall, F1-score)
+- ✅ **ML-0**: Baseline Model Definition (XGBoost baseline implemented)
+- ✅ **ML-1**: Config-Driven Training (`model_config.yaml` created, all parameters moved from hardcoded values)
+- ✅ **ML-2**: MLflow Integration (experiment tracking and model registry with versioning and staging implemented)
 
 ### 🚧 In Progress
 
 **ML Modeling & Tracking (Engineer B):**
-- ✅ **ML-0**: Baseline Model Definition (XGBoost baseline implemented)
-- 🚧 **ML-1**: Config-Driven Training (hardcoded params need to be moved to `model_config.yaml`)
-- ✅ **ML-2**: MLflow Integration (experiment tracking and model registry implemented)
 - 🚧 **ML-3**: Model Evaluation (metrics saved to files, but not to DVC metrics format; confusion matrix pending)
 - 🚧 **TEST-1**: Unit Test Implementation (test suite for models not yet created)
 
-**Other Workstreams:**
-- Containerization with Docker (Engineer C)
-- DVC + Dagshub integration for data versioning (Engineer A)
-- FastAPI service for model serving (Engineer C)
-- CI/CD pipeline with GitHub Actions (Engineer C)
+**Data & Pipeline Infrastructure (Engineer A):**
+- 🚧 **DVC + Dagshub integration**: Data versioning setup in progress
+- 🚧 **Data validation**: Pandera or manual schema validation pending
+
+**API & CI/CD (Engineer C):**
+- 🚧 **FastAPI service**: Basic inference API pending
+- 🚧 **CI/CD pipeline**: GitHub Actions workflows pending
 
 ### 📝 Planned
 
-See [Roadmap](#roadmap) section for detailed phase breakdown.
+See [Roadmap](#-roadmap) section for detailed phase breakdown.
+
+## 🚀 Getting Started
+
+### Prerequisites
+
+- **Docker & Docker Compose** - **Required** for containerized workflow
+- **Python 3.8+** (3.11 recommended) - For local development (optional)
+- **UV** - Fast Python package installer ([Install](https://github.com/astral-sh/uv): `curl -LsSf https://astral.sh/uv/install.sh | sh`)
+- **DVC** - Installed automatically with dependencies
+- **Git** & **Make** - Usually pre-installed
+- **Dagshub account** - [Sign up](https://dagshub.com) for data versioning (optional)
+
+> **⚠️ Windows Users**: This project uses Makefiles and shell scripts that require a Unix-like environment. On Windows, please use one of the following:
+> - **Git Bash** (recommended) - Comes with Git for Windows
+> - **WSL (Windows Subsystem for Linux)** - Full Linux environment
+> - **MSYS2/MinGW** - Unix-like environment for Windows
+>
+> The Makefile and shell commands will not work in native Windows PowerShell or CMD.
+
+### Quick Start (Docker - Recommended)
+
+1. **Clone the repository**
+   ```bash
+   git clone https://github.com/chrmei/MLOps_accidents.git
+   cd MLOps_accidents
+   ```
+
+2. **Build Docker images**
+   ```bash
+   docker compose build
+   # Or using Makefile:
+   make docker-build-dev
+   make docker-build-train
+   ```
+
+3. **Run the complete pipeline**
+   ```bash
+   # Option 1: Using Docker Compose
+   docker compose up train
+   
+   # Option 2: Using Makefile
+   make docker-run-train
+   ```
+
+4. **Start development shell**
+   ```bash
+   docker compose up dev
+   # Or: make docker-run-dev
+   ```
+
+### Local Development Setup (Optional)
+
+If you prefer to run locally without Docker:
+
+1. **Clone and setup Python**
+   ```bash
+   git clone https://github.com/chrmei/MLOps_accidents.git
+   cd MLOps_accidents
+   # Using pyenv: pyenv install 3.11.0 && pyenv local 3.11.0
+   # Using asdf: asdf install python 3.11.0 && asdf reshim python
+   ```
+
+2. **Install dependencies**
+   ```bash
+   make install-dev  # Installs project + dev dependencies (pytest, black, isort, mypy, etc.)
+   # Alternative: uv pip install -e ".[dev]"
+   ```
+
+3. **Verify installation**
+   ```bash
+   python --version && make help
+   ```
+
+4. **Set up DVC and Dagshub (Optional but recommended)**
+   
+   DVC is used for data versioning. To set it up:
+   
+   ```bash
+   # Step 1: Create .env file from template (if .env.example exists)
+   cp .env.example .env
+   
+   # Step 2: MANUALLY EDIT .env file with your Dagshub credentials:
+   #   - DAGSHUB_USERNAME: Your Dagshub username
+   #   - DAGSHUB_TOKEN: Get from https://dagshub.com/user/settings/tokens
+   #   - DAGSHUB_REPO: Your repository (e.g., chrmei/MLOps_accidents)
+   # 
+   # IMPORTANT: You must manually edit .env before running the next commands!
+   
+   # Step 3: Initialize DVC and configure remote using Makefile
+   make dvc-init
+   make dvc-setup-remote
+   ```
+   
+   **Important Notes**:
+   - The `.env` file must be **manually edited** with your credentials before running `make dvc-setup-remote`
+   - The `.env` file is gitignored and will never be committed
+   - Each team member should create their own `.env` file with their personal Dagshub credentials
+
+### Run the Pipeline
+
+**In Docker (Recommended):**
+```bash
+# Complete workflow
+docker compose up train
+
+# Or step-by-step in dev container
+docker compose up dev
+# Inside container:
+make workflow-all
+```
+
+**Locally:**
+```bash
+# 1. Import raw data (downloads 4 CSV files from AWS S3)
+make run-import
+
+# 2. Preprocess data (creates train/test splits in data/preprocessed/)
+make run-preprocess
+
+# 3. Train models (saves to models/{model_type}_model.joblib)
+make run-train
+
+# 4. Make predictions
+make run-predict                    # Interactive mode
+make run-predict-file FILE=path     # From JSON file
+```
 
 ## 📁 Project Structure
 
@@ -158,6 +399,7 @@ MLOps_accidents/
 ├── src/                       # Source code for use in this project
 │   ├── __init__.py
 │   ├── config/                # Configuration files (YAML configs)
+│   │   └── model_config.yaml
 │   ├── data/                  # Scripts to download or generate data
 │   │   ├── __init__.py
 │   │   ├── check_structure.py
@@ -165,24 +407,26 @@ MLOps_accidents/
 │   │   └── make_dataset.py    # Preprocesses raw data
 │   ├── features/              # Scripts to turn raw data into features
 │   │   ├── __init__.py
-│   │   └── build_features.py
+│   │   ├── build_features.py
+│   │   └── preprocess.py      # Reusable preprocessing for inference
 │   ├── models/                # Scripts to train models and make predictions
 │   │   ├── __init__.py
 │   │   ├── predict_model.py   # Model inference script
-│   │   ├── train_model.py     # Model training script
+│   │   ├── train_model.py     # Single model training script (legacy)
+│   │   ├── train_multi_model.py # Multi-model training framework
 │   │   └── test_features.json # Example features for testing
 │   └── visualization/         # Scripts to create visualizations
 │       ├── __init__.py
 │       └── visualize.py
+├── scripts/                   # Utility scripts
+│   ├── manage_model_registry.py # MLflow model registry management
+│   └── setup_dvc_remote.sh
 ├── tests/                     # Pytest suite (to be implemented)
 │   ├── test_data.py
 │   ├── test_models.py
 │   └── test_api.py
-├── .dockerignore              # Docker ignore file (to be created)
-├── .python-version            # Python version for pyenv
-├── .tool-versions             # Python version for asdf
-├── Dockerfile                 # Multi-stage Dockerfile (to be created)
-├── docker-compose.yaml        # Local orchestration (to be created)
+├── Dockerfile                 # Multi-stage Dockerfile
+├── docker-compose.yml         # Docker Compose configuration
 ├── dvc.yaml                   # DVC pipeline definition
 ├── LICENSE                    # MIT License
 ├── Makefile                   # Development commands and automation
@@ -196,99 +440,17 @@ MLOps_accidents/
 
 | Component | Technology | Role |
 | :--- | :--- | :--- |
+| **Containerization** | **Docker** | Multi-stage containers for dev, train, and prod |
 | **Data Versioning** | **DVC + Dagshub** | Versioning raw data and artifacts without AWS |
 | **Experiment Tracking** | **MLflow (Dagshub)** | Tracking metrics, parameters, and models |
-| **Pipeline Stages** | **Docker Containers** | Isolated environments for Data, Training, and API |
-| **Model Serving** | **FastAPI** | REST API for real-time accident prediction |
-| **CI/CD** | **GitHub Actions** | Automated testing, linting, and image building |
-| **Machine Learning** | **scikit-learn** | Model training and evaluation |
+| **Model Serving** | **FastAPI** | REST API for real-time accident prediction (planned) |
+| **CI/CD** | **GitHub Actions** | Automated testing, linting, and image building (planned) |
+| **Machine Learning** | **scikit-learn, XGBoost, LightGBM** | Model training and evaluation |
 | **Data Processing** | **pandas, numpy** | Data manipulation and preprocessing |
 | **Testing** | **pytest** | Unit and integration testing |
 | **Code Quality** | **black, flake8, isort** | Code formatting and linting |
 | **Dependency Management** | **UV** | Fast Python package installer and resolver |
 | **Build System** | **setuptools** | Package building and distribution |
-
-## 🚀 Getting Started
-
-### Prerequisites
-
-- **Python 3.8+** (3.11 recommended - see `.python-version`)
-- **UV** - Fast Python package installer ([Install](https://github.com/astral-sh/uv): `curl -LsSf https://astral.sh/uv/install.sh | sh`)
-- **DVC** - Installed automatically with dependencies
-- **Docker & Docker Compose** - For containerized workflow
-- **Git** & **Make** - Usually pre-installed
-- **Dagshub account** - [Sign up](https://dagshub.com) for data versioning
-
-> **⚠️ Windows Users**: This project uses Makefiles and shell scripts that require a Unix-like environment. On Windows, please use one of the following:
-> - **Git Bash** (recommended) - Comes with Git for Windows
-> - **WSL (Windows Subsystem for Linux)** - Full Linux environment
-> - **MSYS2/MinGW** - Unix-like environment for Windows
->
-> The Makefile and shell commands will not work in native Windows PowerShell or CMD.
-
-### Quick Start
-
-1. **Clone and setup Python** (optional)
-   ```bash
-   git clone https://github.com/chrmei/MLOps_accidents.git
-   cd MLOps_accidents
-   # Using pyenv: pyenv install 3.11.0 && pyenv local 3.11.0
-   # Using asdf: asdf install python 3.11.0 && asdf reshim python
-   ```
-
-2. **Install dependencies**
-   ```bash
-   make install-dev  # Installs project + dev dependencies (pytest, black, isort, mypy, etc.)
-   # Alternative: uv pip install -e ".[dev]"
-   ```
-
-3. **Verify installation**
-   ```bash
-   python --version && make help
-   ```
-
-5. **Set up DVC and Dagshub (Optional but recommended)**
-   
-   DVC is used for data versioning. To set it up:
-   
-   ```bash
-   # Step 1: Create .env file from template
-   cp .env.example .env
-   
-   # Step 2: MANUALLY EDIT .env file with your Dagshub credentials:
-   #   - DAGSHUB_USERNAME: Your Dagshub username
-   #   - DAGSHUB_TOKEN: Get from https://dagshub.com/user/settings/tokens
-   #   - DAGSHUB_REPO: Your repository (e.g., chrmei/MLOps_accidents)
-   # 
-   # IMPORTANT: You must manually edit .env before running the next commands!
-   
-   # Step 3: Initialize DVC and configure remote using Makefile
-   make dvc-init
-   make dvc-setup-remote
-   ```
-   
-   **Important Notes**:
-   - The `.env` file must be **manually edited** with your credentials before running `make dvc-setup-remote`
-   - The `.env` file is gitignored and will never be committed
-   - Each team member should create their own `.env` file with their personal Dagshub credentials
-   - See [DVC Commands](#dvc-data-version-control) section for all available DVC commands
-
-### Run the Pipeline
-
-```bash
-# 1. Import raw data (downloads 4 CSV files from AWS S3)
-make run-import
-
-# 2. Preprocess data (creates train/test splits in data/preprocessed/)
-make run-preprocess
-
-# 3. Train baseline model (saves to src/models/trained_model.joblib)
-make run-train
-
-# 4. Make predictions
-make run-predict                    # Interactive mode
-make run-predict-file FILE=path     # From JSON file
-```
 
 ## 🛠️ Development Commands
 
@@ -311,9 +473,18 @@ Run `make help` to see all commands. Key commands:
 **Data Pipeline**
 - `make run-import` - Import raw data
 - `make run-preprocess` - Preprocess data
-- `make run-train` - Train model
+- `make run-features` - Build features
+- `make run-train` - Train models
 - `make run-predict` - Interactive predictions
 - `make run-predict-file FILE=path` - Predictions from JSON
+
+**Docker**
+- `make docker-build-dev` - Build development image
+- `make docker-build-train` - Build training image
+- `make docker-run-dev` - Run dev container (interactive)
+- `make docker-run-train` - Run training pipeline
+- `make docker-run-dev-exec CMD="..."` - Run one-off command
+- `make docker-dvc-pull` - Pull data/models from DVC remote via Docker Compose
 
 **DVC (Data Version Control)**
 - `make dvc-init` - Initialize DVC
@@ -321,58 +492,6 @@ Run `make help` to see all commands. Key commands:
 - `make dvc-status` / `dvc-push` / `dvc-pull` / `dvc-repro`
 
 > **Important**: For `make dvc-setup-remote`, you must first manually edit `.env` with your Dagshub credentials (copy from `.env.example`).
-
-## 🐳 Docker Setup
-
-**Build images**
-- Dev: `make docker-build-dev`
-- Train: `make docker-build-train`
-- Prod (optional): Uncomment the prod stage in Dockerfile and `docker-build-prod` target in Makefile, then run `make docker-build-prod`
-
-**Run containers (Make targets)**
-- Dev interactive shell: `make docker-run-dev`
-- Dev detached (background): `make docker-run-dev-detached` (attach later with `docker exec -it mlops-dev bash`)
-- Dev one-off command: `make docker-run-dev-exec CMD="python src/models/predict_model.py"`
-- Train non-interactive: `make docker-run-train`
-- Train interactive shell: `make docker-run-train-interactive`
-
-**Direct docker examples**
-- Dev shell: `docker run -it --rm -v $(PWD):/app mlops-accidents:dev`
-- Train: `docker run --rm -v $(PWD):/app mlops-accidents:train`
-- Prod (after enabling prod stage): `docker run --rm -v $(PWD)/models:/app/models -v $(PWD)/data:/app/data mlops-accidents:prod python src/models/predict_model.py src/models/test_features.json`
-
-## 🧩 Docker Compose
-
-> Note: The compose file includes `prod`, but the prod stage in Dockerfile is commented. Enable it before using `prod` service.
-
-Common commands:
-- Build all services: `docker compose build`
-- Start dev shell: `docker compose up dev`
-- Run training: `docker compose up train`
-- Start prod (after enabling prod stage): `docker compose up prod`
-- Tail logs: `docker compose logs -f train`
-- Stop everything: `docker compose down`
-
-Profiles:
-- Data sync via DVC: `docker compose --profile dvc up dvc-pull`
-
-Volumes used (from `docker-compose.yml`):
-- Project code mounted into `/app` for dev/train
-- `./models` and `./data` mounted read-only for prod
-
-## 🚀 Production Deployment (template)
-
-1) **Enable prod stage**
-- Uncomment the prod stage in Dockerfile
-- Uncomment `docker-build-prod` and `docker-run-prod` targets in Makefile (if desired)
-
-2) **Build and run**
-- Build: `make docker-build-prod` (or `docker compose build prod`)
-- Run local inference: `docker run --rm -v $(PWD)/models:/app/models -v $(PWD)/data:/app/data mlops-accidents:prod python src/models/predict_model.py src/models/test_features.json`
-
-3) **Expose API (next step)**
-- Replace the prod `CMD` with a FastAPI/uvicorn command when the API is added
-- Keep healthchecks in compose for readiness/liveness
 
 ## 🔄 Workflow
 
@@ -843,6 +962,9 @@ The project is designed for a 3-person team with clear separation of concerns:
 - **Focus**: Getting data from raw to "model-ready"
 - **Deliverables**: DVC pipelines, data validation (Pandera or manual), Dagshub integration
 - **Primary Files**: `src/data/`, `dvc.yaml`, `params.yaml`
+- **Status**: 
+  - 🚧 DVC + Dagshub integration in progress
+  - 🚧 Data validation pending
 
 ### **Engineer B: ML Modeling & Tracking**
 - **Focus**: ML model development and experiment logging
@@ -851,19 +973,30 @@ The project is designed for a 3-person team with clear separation of concerns:
 - **Status**: 
   - ✅ Feature engineering pipeline complete
   - ✅ Model training and prediction scripts functional
-  - 🚧 Config-driven training (ML-1) - pending
+  - ✅ Config-driven training (ML-1) - Complete
   - ✅ MLflow integration (ML-2) - Model registry with versioning and staging implemented
-  - 🚧 DVC metrics format (ML-3) - pending
-  - 🚧 Unit tests (TEST-1) - pending
+  - 🚧 DVC metrics format (ML-3) - Partial (metrics saved, DVC format pending)
+  - 🚧 Unit tests (TEST-1) - Pending
 
 ### **Engineer C: API, Docker & CI/CD**
 - **Focus**: Containerization, API development, and automation
 - **Deliverables**: FastAPI application, Dockerfiles, GitHub Actions pipelines
 - **Primary Files**: `src/api/`, `Dockerfile`, `.github/workflows/`
+- **Status**:
+  - ✅ Multi-stage Dockerfile implemented (dev, train, prod template)
+  - ✅ Docker Compose configuration complete
+  - 🚧 FastAPI service pending
+  - 🚧 CI/CD pipeline pending
 
 ## 🗺️ Roadmap
 
 ### Phase 1: Foundations (Deadline: December 19th, 2024)
+
+**Containerization (Engineer C) Progress:**
+- ✅ Multi-stage Dockerfile (dev, train, prod template)
+- ✅ Docker Compose services configured
+- ✅ Volume mounts and environment setup
+- 🚧 Production stage ready for FastAPI integration
 
 **ML Modeling & Tracking (Engineer B) Progress:**
 - ✅ Feature engineering pipeline (`build_features.py`, `preprocess.py`)
@@ -871,22 +1004,22 @@ The project is designed for a 3-person team with clear separation of concerns:
 - ✅ Model prediction script (`predict_model.py`) with preprocessing
 - ✅ Model artifacts and metadata saving (per-model files)
 - ✅ **ML-0**: XGBoost baseline model implemented
-- ✅ **ML-1**: Config-driven training (`model_config.yaml` created)
+- ✅ **ML-1**: Config-driven training (`model_config.yaml` created, all parameters moved)
 - ✅ **ML-2**: MLflow integration for experiment tracking and model registry
 - ✅ **Multi-Model Framework**: Standardized framework for training and comparing multiple models
-- 🚧 **ML-3**: DVC metrics format and confusion matrix
+- 🚧 **ML-3**: DVC metrics format and confusion matrix (partial - metrics saved, DVC format pending)
 - 🚧 **TEST-1**: Unit tests for model training and prediction
 
 **Overall Phase 1 Status:**
 - ✅ Define project objectives and key metrics
-- 🚧 Set up reproducible development environment (containerization, Docker)
+- ✅ Set up reproducible development environment (containerization, Docker) - **Docker implemented**
 - ✅ Collect and preprocess data (ML Pipeline) - **Data pipeline functional**
-- 🚧 Build and evaluate baseline ML model, implement unit tests - **Model training functional, baseline & tests pending**
-- 🚧 Implement basic inference API
+- 🚧 Build and evaluate baseline ML model, implement unit tests - **Model training functional, baseline complete, tests pending**
+- 🚧 Implement basic inference API - **Pending**
 
 ### Phase 2: Microservices, Tracking & Versioning (Deadline: January 16th, 2026)
-- Set up experiment tracking with MLflow
-- Implement data & model versioning (MLflow, DVC)
+- ✅ Set up experiment tracking with MLflow
+- 🚧 Implement data & model versioning (MLflow, DVC)
 - Decompose application into microservices and design orchestration
 
 ### Phase 3: Orchestration & Deployment (Deadline: January 29th, 2026)
@@ -912,11 +1045,12 @@ For detailed execution plans, see:
 **Code**: Run scripts from project root, use conventional commits (`feat:`, `fix:`), follow PEP 8, add type hints  
 **Branches**: `feature/<ticket-id>-description`, PRs require approval + passing CI  
 **Testing**: >70% coverage for `src/data/`, `src/models/`, `src/api/`; run `make test` before PRs  
-**Dependencies**: Managed in `pyproject.toml` via UV (`make install-dev`); Python version in `.python-version`
+**Dependencies**: Managed in `pyproject.toml` via UV (`make install-dev`); Python version in `.python-version`  
+**Containerization**: All workflows should run in Docker containers for reproducibility
 
 ## 🤝 Contributing
 
-1. Setup: `make install-dev`
+1. Setup: `make install-dev` (or use Docker: `docker compose up dev`)
 2. Branch: `git checkout -b feature/your-feature-name`
 3. Develop: Make changes following guidelines
 4. Quality: `make format && make lint && make type-check`
@@ -941,4 +1075,3 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 ---
 
 **Note**: This project is in active development. The structure and workflows are being refined as we progress through Phase 1. For the most up-to-date information, refer to the documentation in the `doc/` directory.
-

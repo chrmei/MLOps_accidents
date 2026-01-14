@@ -1,4 +1,4 @@
-.PHONY: help install install-dev sync lock update clean lint format type-check test test-cov run-import run-preprocess run-features run-train run-train-grid run-predict run-predict-file workflow-all workflow-data workflow-ml dvc-init dvc-setup-remote dvc-status dvc-push dvc-pull dvc-repro docker-build docker-build-dev docker-build-prod docker-build-train docker-run-dev docker-run-prod docker-run-train docker-clean
+.PHONY: help install install-dev sync lock update clean lint format type-check test test-cov run-import run-preprocess run-features run-train run-train-grid run-predict run-predict-file workflow-all workflow-data workflow-ml dvc-init dvc-setup-remote dvc-status dvc-push dvc-pull dvc-repro docker-build docker-build-dev docker-build-prod docker-build-train docker-run-dev docker-run-prod docker-run-train docker-dvc-pull docker-clean
 
 # Load .env file if it exists (cross-platform with GNU Make)
 # Note: On Windows, use Git Bash, WSL, or another Unix-like environment
@@ -253,6 +253,10 @@ docker-run-train: ## Run training pipeline in container (non-interactive)
 docker-run-train-interactive: ## Run training container with interactive shell
 	@echo "Starting training container (interactive)..."
 	docker run -it --rm -v $(PWD):/app mlops-accidents:train bash
+
+docker-dvc-pull: ## Pull data/models from DVC remote using Docker Compose
+	@echo "Pulling data/models from DVC remote via Docker..."
+	docker compose --profile dvc up dvc-pull
 
 # update mlops-accidents:prod if prod target is uncommented in Dockerfile
 docker-clean: ## Remove all Docker images and containers
