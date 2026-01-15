@@ -6,6 +6,7 @@ from pathlib import Path
 import click
 import numpy as np
 import pandas as pd
+import pandera as pa
 
 try:
     from .check_structure import check_existing_file, check_existing_folder
@@ -77,6 +78,18 @@ def main(input_filepath, output_filepath):
         output_filepath,
     )
 
+def validate_df(df_model, df):
+    logger = logging.getLogger(__name__)
+    schema = df_model.to_schema()
+    try:
+        val_df = schema(df, lazy=True)
+        logger.info(f"{schema.name} validation passed")
+        return val_df
+    except pa.errors.SchemaErrors as err:
+        logger.error(f"{schema.name} validation failed") 
+        logger.error(f"\n{err.failure_cases}")
+        return None
+
 
 def process_data(
     input_filepath_users,
@@ -96,17 +109,16 @@ def process_data(
 
     # --Validating datasets
     logger.info("Validating raw datasets against their schemas:")
-    UserSchema.validate(df_users)
-    logger.info("UserSchema validation passed")
 
-    CharactSchema.validate(df_caract)
-    logger.info("CharactSchema validation passed")
-
-    PlaceSchema.validate(df_places)
-    logger.info("PlaceSchema validation passed")
+    df_users = validate_df(UserSchema, df_users)
+    df_caract = validate_df(CharactSchema, df_caract)
+    df_places = validate_df(PlaceSchema, df_places)
+    df_veh = validate_df(VehicleSchema, df_veh)
     
-    VehicleSchema.validate(df_veh)
-    logger.info("VehicleSchema validation passed")
+    if any(df is None for df in (df_users, df_caract, df_places, df_veh)):
+        raise ValueError(f"Validation failed for at least one data schema")
+    else:
+        logger.info("All schema validations passed")
 
     # --Creating new columns
     nb_victim = pd.crosstab(df_users.Num_Acc, "count").reset_index()
