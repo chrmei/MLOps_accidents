@@ -23,6 +23,7 @@ import json
 import logging
 import os
 import sys
+import tempfile
 
 import joblib
 import pandas as pd
@@ -128,13 +129,61 @@ def find_best_production_model(
         model_name = f"{base_name}_{model_type_formatted}"
         
         try:
-            # Try to get Production model by alias (lowercase)
+            model_version = None
             alias = stage.lower()
+            
+            # Try to get Production model by alias (lowercase) - primary method
             try:
                 model_version = client.get_model_version_by_alias(model_name, alias)
+                logger.debug(f"Found {model_name} with '{alias}' alias")
             except Exception:
-                # No model with this alias, skip
-                logger.debug(f"No {stage} model found for {model_name}")
+                # Fallback: search all versions and check for production stage or try to verify alias
+                logger.debug(f"No {stage} alias found for {model_name}, searching all versions...")
+                try:
+                    # Search all versions of this model
+                    all_versions = client.search_model_versions(f"name='{model_name}'")
+                    
+                    if not all_versions:
+                        logger.debug(f"No versions found for {model_name}")
+                        continue
+                    
+                    # Check each version for production stage (deprecated but still used)
+                    # or verify if any version actually has the alias (in case of timing issues)
+                    for mv in all_versions:
+                        found = False
+                        
+                        # Method 1: Check deprecated current_stage for backward compatibility
+                        if hasattr(mv, 'current_stage') and mv.current_stage == stage:
+                            model_version = mv
+                            found = True
+                            logger.debug(f"Found {model_name} version {mv.version} in {stage} stage (deprecated stage system)")
+                        
+                        # Method 2: Try to verify if this version has the alias by getting detailed version info
+                        # Some MLflow backends may have aliases that aren't immediately available via get_model_version_by_alias
+                        if not found:
+                            try:
+                                mv_detail = client.get_model_version(model_name, mv.version)
+                                # Some backends store aliases differently - check if we can access them
+                                # If the detailed version matches what we'd get by alias, use it
+                                # This handles cases where alias lookup failed but the version actually has the alias
+                                if hasattr(mv_detail, 'aliases') and alias in (mv_detail.aliases or []):
+                                    model_version = mv
+                                    found = True
+                                    logger.debug(f"Found {model_name} version {mv.version} with '{alias}' alias (via version detail)")
+                            except Exception:
+                                pass
+                        
+                        if found:
+                            break
+                    
+                    if model_version is None:
+                        logger.debug(f"No {stage} model found for {model_name} (checked all {len(all_versions)} versions)")
+                        continue
+                except Exception as e:
+                    logger.debug(f"Error searching versions for {model_name}: {e}")
+                    continue
+            
+            if model_version is None:
                 continue
             
             # Get run metrics
@@ -165,7 +214,17 @@ def find_best_production_model(
         )
         return best_model, best_model_type, best_metrics
     else:
-        logger.warning(f"No Production models found across enabled model types")
+        logger.warning(f"No Production models found across enabled model types: {enabled_models}")
+        # Build list of checked model names
+        checked_models = [
+            f"{base_name}_{m.replace('_', ' ').title().replace(' ', '_')}" 
+            for m in enabled_models
+        ]
+        logger.warning(f"Checked models: {checked_models}")
+        logger.warning(
+            "Tip: Ensure models are promoted to Production using: "
+            "python scripts/manage_model_registry.py promote <model_name> Production"
+        )
         return None, None, None
 
 
@@ -331,33 +390,99 @@ def load_model_from_registry(
     model = mlflow.sklearn.load_model(model_uri)
     logger.info(f"Successfully loaded model from MLflow registry")
 
-    # Note: When loading from MLflow registry, encoders and metadata should be
-    # stored as artifacts in the MLflow run. For now, we'll try to load from
-    # local filesystem as fallback, but ideally these should be stored in MLflow.
-    # This is a limitation - ideally encoders and metadata should be logged as
-    # MLflow artifacts during training.
+    # Load metadata and label encoders from MLflow artifacts
     label_encoders = None
     metadata = None
 
-    # Try to load from local filesystem (fallback)
-    local_encoders_path = "models/label_encoders.joblib"
-    local_metadata_path = "models/trained_model_metadata.joblib"
+    try:
+        from mlflow.tracking import MlflowClient
+        client = MlflowClient()
+        
+        # Get the model version to find the run_id
+        if stage:
+            # Get model version by alias (stage)
+            alias = stage.lower()
+            try:
+                model_version = client.get_model_version_by_alias(model_name, alias)
+            except Exception:
+                # Fallback: search for model version with the stage
+                model_versions = client.search_model_versions(
+                    f"name='{model_name}'",
+                    max_results=1,
+                    order_by=["version_number DESC"]
+                )
+                if model_versions:
+                    model_version = model_versions[0]
+                else:
+                    raise ValueError(f"No model version found for {model_name} with stage {stage}")
+        elif version:
+            model_version = client.get_model_version(model_name, version)
+        else:
+            raise ValueError("Either 'stage' or 'version' must be provided")
+        
+        run_id = model_version.run_id
+        logger.info(f"Loading artifacts from MLflow run: {run_id}")
+        
+        # Download artifacts to a temporary directory
+        with tempfile.TemporaryDirectory() as temp_dir:
+            # Download artifacts directory
+            artifacts_path = client.download_artifacts(run_id, "artifacts", temp_dir)
+            logger.debug(f"Downloaded artifacts to: {artifacts_path}")
+            
+            # Load metadata - try different possible paths
+            metadata_file = os.path.join(artifacts_path, "model_metadata.joblib")
+            if not os.path.exists(metadata_file):
+                # Try alternative path structure
+                alt_path = os.path.join(temp_dir, "artifacts", "model_metadata.joblib")
+                if os.path.exists(alt_path):
+                    metadata_file = alt_path
+            
+            if os.path.exists(metadata_file):
+                metadata = joblib.load(metadata_file)
+                logger.info("Loaded model metadata from MLflow artifacts")
+            else:
+                logger.warning(
+                    "Model metadata not found in MLflow artifacts. "
+                    "Consider storing metadata as MLflow artifacts during training."
+                )
+            
+            # Load label encoders - try different possible paths
+            encoders_file = os.path.join(artifacts_path, "label_encoders.joblib")
+            if not os.path.exists(encoders_file):
+                # Try alternative path structure
+                alt_path = os.path.join(temp_dir, "artifacts", "label_encoders.joblib")
+                if os.path.exists(alt_path):
+                    encoders_file = alt_path
+            
+            if os.path.exists(encoders_file):
+                label_encoders = joblib.load(encoders_file)
+                logger.info("Loaded label encoders from MLflow artifacts")
+            else:
+                logger.warning(
+                    "Label encoders not found in MLflow artifacts. "
+                    "Consider storing encoders as MLflow artifacts during training."
+                )
+                # Fallback to local filesystem
+                local_encoders_path = "models/label_encoders.joblib"
+                if os.path.exists(local_encoders_path):
+                    label_encoders = joblib.load(local_encoders_path)
+                    logger.info(f"Loaded label encoders from local filesystem fallback: {local_encoders_path}")
+    
+    except Exception as e:
+        logger.warning(f"Failed to load artifacts from MLflow: {e}")
+        logger.warning("Falling back to local filesystem...")
+        
+        # Fallback to local filesystem
+        local_encoders_path = "models/label_encoders.joblib"
+        local_metadata_path = "models/trained_model_metadata.joblib"
 
-    if os.path.exists(local_encoders_path):
-        label_encoders = joblib.load(local_encoders_path)
-        logger.info(f"Loaded label encoders from local filesystem: {local_encoders_path}")
-    else:
-        logger.warning(
-            "Label encoders not found. Consider storing encoders as MLflow artifacts."
-        )
-
-    if os.path.exists(local_metadata_path):
-        metadata = joblib.load(local_metadata_path)
-        logger.info(f"Loaded metadata from local filesystem: {local_metadata_path}")
-    else:
-        logger.warning(
-            "Model metadata not found. Consider storing metadata as MLflow artifacts."
-        )
+        if os.path.exists(local_encoders_path):
+            label_encoders = joblib.load(local_encoders_path)
+            logger.info(f"Loaded label encoders from local filesystem: {local_encoders_path}")
+        
+        if os.path.exists(local_metadata_path):
+            metadata = joblib.load(local_metadata_path)
+            logger.info(f"Loaded metadata from local filesystem: {local_metadata_path}")
 
     return model, label_encoders, metadata
 

@@ -9,6 +9,7 @@ This module contains trainer classes for different model types:
 - LightGBMTrainer
 """
 import logging
+import time
 from typing import Dict, Optional, Tuple
 
 import numpy as np
@@ -58,7 +59,7 @@ class XGBoostTrainer(BaseTrainer):
 
     def _build_model(
         self, X_train: pd.DataFrame, y_train: pd.Series, use_grid_search: bool = False
-    ) -> Tuple[object, Dict, Optional[float]]:
+    ) -> Tuple[object, Dict, Optional[float], Dict]:
         """Build and train XGBoost model."""
         if not XGBOOST_AVAILABLE:
             raise ImportError("XGBoost is required. Install with: pip install xgboost")
@@ -102,7 +103,20 @@ class XGBoostTrainer(BaseTrainer):
             logger.info(f"Best parameters: {grid_search.best_params_}")
             logger.info(f"Best CV {scoring} score: {grid_search.best_score_:.4f}")
 
-            return grid_search.best_estimator_, grid_search.best_params_, grid_search.best_score_
+            # Time fitting the best model on full training data
+            best_model = grid_search.best_estimator_
+            logger.info("Fitting best model on full training data...")
+            best_fit_start = time.perf_counter()
+            best_model.fit(X_train, y_train)
+            best_fit_end = time.perf_counter()
+            best_model_fit_time = best_fit_end - best_fit_start
+            logger.info(f"Best model fit time: {best_model_fit_time:.2f} seconds")
+
+            training_times = {
+                "best_model_fit_time": best_model_fit_time,
+            }
+
+            return best_model, grid_search.best_params_, grid_search.best_score_, training_times
         else:
             # Use default parameters
             default_params = self._get_default_params()
@@ -118,11 +132,19 @@ class XGBoostTrainer(BaseTrainer):
 
             logger.info(f"Default parameters: {default_params}")
             logger.info("Fitting model...")
+            fit_start = time.perf_counter()
             pipeline.fit(X_train, y_train)
+            fit_end = time.perf_counter()
+            fit_time = fit_end - fit_start
+            logger.info(f"Model fit time: {fit_time:.2f} seconds")
+
+            training_times = {
+                "best_model_fit_time": fit_time,
+            }
 
             # Format params for logging (add xgb__ prefix)
             best_params = {f"xgb__{k}": v for k, v in default_params.items()}
-            return pipeline, best_params, None
+            return pipeline, best_params, None, training_times
 
     def _get_model_params(self, model) -> Dict:
         """Extract XGBoost model parameters."""
@@ -155,7 +177,7 @@ class RandomForestTrainer(BaseTrainer):
 
     def _build_model(
         self, X_train: pd.DataFrame, y_train: pd.Series, use_grid_search: bool = False
-    ) -> Tuple[object, Dict, Optional[float]]:
+    ) -> Tuple[object, Dict, Optional[float], Dict]:
         """Build and train Random Forest model."""
         rf_config = self.config.get("random_forest", {}).get("default_params", {})
         random_state = rf_config.get("random_state", 42)
@@ -202,7 +224,20 @@ class RandomForestTrainer(BaseTrainer):
             logger.info(f"Best parameters: {grid_search.best_params_}")
             logger.info(f"Best CV {scoring} score: {grid_search.best_score_:.4f}")
 
-            return grid_search.best_estimator_, grid_search.best_params_, grid_search.best_score_
+            # Time fitting the best model on full training data
+            best_model = grid_search.best_estimator_
+            logger.info("Fitting best model on full training data...")
+            best_fit_start = time.perf_counter()
+            best_model.fit(X_train, y_train)
+            best_fit_end = time.perf_counter()
+            best_model_fit_time = best_fit_end - best_fit_start
+            logger.info(f"Best model fit time: {best_model_fit_time:.2f} seconds")
+
+            training_times = {
+                "best_model_fit_time": best_model_fit_time,
+            }
+
+            return best_model, grid_search.best_params_, grid_search.best_score_, training_times
         else:
             # Use default parameters
             default_params = self._get_default_params()
@@ -218,11 +253,19 @@ class RandomForestTrainer(BaseTrainer):
 
             logger.info(f"Default parameters: {default_params}")
             logger.info("Fitting model...")
+            fit_start = time.perf_counter()
             pipeline.fit(X_train, y_train)
+            fit_end = time.perf_counter()
+            fit_time = fit_end - fit_start
+            logger.info(f"Model fit time: {fit_time:.2f} seconds")
+
+            training_times = {
+                "best_model_fit_time": fit_time,
+            }
 
             # Format params for logging (add rf__ prefix)
             best_params = {f"rf__{k}": v for k, v in default_params.items()}
-            return pipeline, best_params, None
+            return pipeline, best_params, None, training_times
 
     def _get_model_params(self, model) -> Dict:
         """Extract Random Forest model parameters."""
@@ -254,7 +297,7 @@ class LogisticRegressionTrainer(BaseTrainer):
 
     def _build_model(
         self, X_train: pd.DataFrame, y_train: pd.Series, use_grid_search: bool = False
-    ) -> Tuple[object, Dict, Optional[float]]:
+    ) -> Tuple[object, Dict, Optional[float], Dict]:
         """Build and train Logistic Regression model."""
         lr_config = self.config.get("logistic_regression", {}).get("default_params", {})
         random_state = lr_config.get("random_state", 42)
@@ -335,7 +378,20 @@ class LogisticRegressionTrainer(BaseTrainer):
             logger.info(f"Best parameters: {grid_search.best_params_}")
             logger.info(f"Best CV {scoring} score: {grid_search.best_score_:.4f}")
 
-            return grid_search.best_estimator_, grid_search.best_params_, grid_search.best_score_
+            # Time fitting the best model on full training data
+            best_model = grid_search.best_estimator_
+            logger.info("Fitting best model on full training data...")
+            best_fit_start = time.perf_counter()
+            best_model.fit(X_train, y_train)
+            best_fit_end = time.perf_counter()
+            best_model_fit_time = best_fit_end - best_fit_start
+            logger.info(f"Best model fit time: {best_model_fit_time:.2f} seconds")
+
+            training_times = {
+                "best_model_fit_time": best_model_fit_time,
+            }
+
+            return best_model, grid_search.best_params_, grid_search.best_score_, training_times
         else:
             # Use default parameters
             default_params = self._get_default_params()
@@ -351,11 +407,19 @@ class LogisticRegressionTrainer(BaseTrainer):
 
             logger.info(f"Default parameters: {default_params}")
             logger.info("Fitting model...")
+            fit_start = time.perf_counter()
             pipeline.fit(X_train, y_train)
+            fit_end = time.perf_counter()
+            fit_time = fit_end - fit_start
+            logger.info(f"Model fit time: {fit_time:.2f} seconds")
+
+            training_times = {
+                "best_model_fit_time": fit_time,
+            }
 
             # Format params for logging (add lr__ prefix)
             best_params = {f"lr__{k}": v for k, v in default_params.items()}
-            return pipeline, best_params, None
+            return pipeline, best_params, None, training_times
 
     def _get_model_params(self, model) -> Dict:
         """Extract Logistic Regression model parameters."""
@@ -387,7 +451,7 @@ class LightGBMTrainer(BaseTrainer):
 
     def _build_model(
         self, X_train: pd.DataFrame, y_train: pd.Series, use_grid_search: bool = False
-    ) -> Tuple[object, Dict, Optional[float]]:
+    ) -> Tuple[object, Dict, Optional[float], Dict]:
         """Build and train LightGBM model."""
         if not LIGHTGBM_AVAILABLE:
             raise ImportError("LightGBM is required. Install with: pip install lightgbm")
@@ -430,7 +494,20 @@ class LightGBMTrainer(BaseTrainer):
             logger.info(f"Best parameters: {grid_search.best_params_}")
             logger.info(f"Best CV {scoring} score: {grid_search.best_score_:.4f}")
 
-            return grid_search.best_estimator_, grid_search.best_params_, grid_search.best_score_
+            # Time fitting the best model on full training data
+            best_model = grid_search.best_estimator_
+            logger.info("Fitting best model on full training data...")
+            best_fit_start = time.perf_counter()
+            best_model.fit(X_train, y_train)
+            best_fit_end = time.perf_counter()
+            best_model_fit_time = best_fit_end - best_fit_start
+            logger.info(f"Best model fit time: {best_model_fit_time:.2f} seconds")
+
+            training_times = {
+                "best_model_fit_time": best_model_fit_time,
+            }
+
+            return best_model, grid_search.best_params_, grid_search.best_score_, training_times
         else:
             # Use default parameters
             default_params = self._get_default_params()
@@ -446,11 +523,19 @@ class LightGBMTrainer(BaseTrainer):
 
             logger.info(f"Default parameters: {default_params}")
             logger.info("Fitting model...")
+            fit_start = time.perf_counter()
             pipeline.fit(X_train, y_train)
+            fit_end = time.perf_counter()
+            fit_time = fit_end - fit_start
+            logger.info(f"Model fit time: {fit_time:.2f} seconds")
+
+            training_times = {
+                "best_model_fit_time": fit_time,
+            }
 
             # Format params for logging (add lgbm__ prefix)
             best_params = {f"lgbm__{k}": v for k, v in default_params.items()}
-            return pipeline, best_params, None
+            return pipeline, best_params, None, training_times
 
     def _get_model_params(self, model) -> Dict:
         """Extract LightGBM model parameters."""

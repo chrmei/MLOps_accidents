@@ -65,8 +65,18 @@ class EnhancedModelRegistry:
         self.registry_config = self.mlflow_config.get("model_registry", {})
         self.promotion_config = self.registry_config.get("promotion", {})
         # Get comparison stage from auto_promotion config (defaults to Production)
+        # Can be a string (single stage) or list (multiple stages - compares against best)
         auto_promotion_config = self.registry_config.get("auto_promotion", {})
-        self.comparison_stage = auto_promotion_config.get("comparison_stage", "Production")
+        comparison_stage_config = auto_promotion_config.get("comparison_stage", "Production")
+        # Normalize to list for consistent handling
+        if isinstance(comparison_stage_config, str):
+            self.comparison_stages = [comparison_stage_config]
+        elif isinstance(comparison_stage_config, list):
+            self.comparison_stages = comparison_stage_config
+        else:
+            self.comparison_stages = ["Production"]
+        # Keep backward compatibility - use first stage as primary for display purposes
+        self.comparison_stage = self.comparison_stages[0] if self.comparison_stages else "Production"
         
         # Setup MLflow client
         self._setup_mlflow_client()
@@ -519,24 +529,68 @@ class EnhancedModelRegistry:
                 "reason": f"Error fetching candidate version: {e}",
             }
         
-        # Compare against the stage specified in auto_promotion.comparison_stage config
+        # Compare against the stage(s) specified in auto_promotion.comparison_stage config
+        # If multiple stages, find the best performing model across all stages
         # Use alias instead of deprecated stage
-        try:
-            # Convert stage name to lowercase alias (e.g., "Production" -> "production")
-            comparison_alias = self.comparison_stage.lower()
+        current_prod = None
+        best_prod_score = None
+        best_prod_stage = None
+        
+        promotion_rules = self.promotion_config.get("rules", {})
+        primary_metric = promotion_rules.get("primary_metric", "f1_score")
+        
+        # Check all comparison stages and find the best one
+        for comparison_stage in self.comparison_stages:
             try:
-                current_prod = self.client.get_model_version_by_alias(model_name, comparison_alias)
-            except Exception:
-                # Fallback: search for versions if alias doesn't exist
-                comparison_versions = self.client.search_model_versions(
-                    f"name='{model_name}'",
-                    max_results=1,
-                    order_by=["version_number DESC"]
-                )
-                current_prod = comparison_versions[0] if comparison_versions else None
-        except Exception as e:
-            logger.warning(f"Could not fetch current {self.comparison_stage} version: {e}")
-            current_prod = None
+                # Convert stage name to lowercase alias (e.g., "Production" -> "production")
+                comparison_alias = comparison_stage.lower()
+                try:
+                    stage_model_version = self.client.get_model_version_by_alias(model_name, comparison_alias)
+                    # Get metrics for this stage's model
+                    stage_run = self.client.get_run(stage_model_version.run_id)
+                    stage_metrics = stage_run.data.metrics
+                    
+                    # Check if this stage's model is better than current best
+                    if primary_metric in stage_metrics:
+                        stage_score = stage_metrics[primary_metric]
+                        if best_prod_score is None or stage_score > best_prod_score:
+                            best_prod_score = stage_score
+                            best_prod_stage = comparison_stage
+                            current_prod = stage_model_version
+                except Exception:
+                    # No model with this alias - skip this stage (only use fallback for single stage for backward compatibility)
+                    if len(self.comparison_stages) == 1:
+                        # Fallback: search for latest version if alias doesn't exist (backward compatibility)
+                        try:
+                            comparison_versions = self.client.search_model_versions(
+                                f"name='{model_name}'",
+                                max_results=1,
+                                order_by=["version_number DESC"]
+                            )
+                            if comparison_versions:
+                                stage_model_version = comparison_versions[0]
+                                stage_run = self.client.get_run(stage_model_version.run_id)
+                                stage_metrics = stage_run.data.metrics
+                                
+                                if primary_metric in stage_metrics:
+                                    stage_score = stage_metrics[primary_metric]
+                                    if best_prod_score is None or stage_score > best_prod_score:
+                                        best_prod_score = stage_score
+                                        best_prod_stage = comparison_stage
+                                        current_prod = stage_model_version
+                        except Exception:
+                            logger.debug(f"No model found for comparison stage: {comparison_stage}")
+                    else:
+                        logger.debug(f"No model found for comparison stage: {comparison_stage} (skipping)")
+            except Exception as e:
+                logger.debug(f"Error checking comparison stage {comparison_stage}: {e}")
+                continue
+        
+        if len(self.comparison_stages) > 1 and current_prod:
+            logger.info(
+                f"Comparing against best model from stages {self.comparison_stages}: "
+                f"{best_prod_stage} (score: {best_prod_score:.4f})"
+            )
         
         evaluation = {
             "candidate_version": candidate_version,
@@ -546,9 +600,7 @@ class EnhancedModelRegistry:
             "metrics_comparison": {},
         }
         
-        # Check promotion rules
-        promotion_rules = self.promotion_config.get("rules", {})
-        primary_metric = promotion_rules.get("primary_metric", "f1_score")
+        # Check promotion rules (primary_metric already retrieved above)
         min_threshold = promotion_rules.get("min_threshold", {})
         improvement_threshold = promotion_rules.get("improvement_threshold_pct", 0)
         
@@ -577,16 +629,24 @@ class EnhancedModelRegistry:
                     
                     improvement_pct = ((candidate_score - prod_score) / prod_score) * 100
                     
+                    # Build comparison description
+                    if len(self.comparison_stages) > 1:
+                        comparison_desc = f"best model from {self.comparison_stages} ({best_prod_stage})"
+                    else:
+                        comparison_desc = self.comparison_stage
+                    
                     evaluation["metrics_comparison"] = {
                         "candidate": {primary_metric: candidate_score},
-                        f"current_{self.comparison_stage.lower()}": {primary_metric: prod_score},
+                        f"current_{best_prod_stage.lower() if best_prod_stage else self.comparison_stage.lower()}": {primary_metric: prod_score},
+                        "comparison_stages": self.comparison_stages,
+                        "best_comparison_stage": best_prod_stage,
                         "improvement_pct": improvement_pct,
                     }
                     
                     if improvement_pct >= improvement_threshold:
                         evaluation["promote"] = True
                         evaluation["reason"] = (
-                            f"Candidate outperforms {self.comparison_stage} by {improvement_pct:.2f}% "
+                            f"Candidate outperforms {comparison_desc} by {improvement_pct:.2f}% "
                             f"(threshold: {improvement_threshold}%)"
                         )
                     else:
@@ -600,19 +660,22 @@ class EnhancedModelRegistry:
                     evaluation["reason"] = f"Primary metric '{primary_metric}' not found in both versions"
                     
             except Exception as e:
-                logger.warning(f"Error comparing with {self.comparison_stage}: {e}")
+                comparison_desc = f"{self.comparison_stages}" if len(self.comparison_stages) > 1 else self.comparison_stage
+                logger.warning(f"Error comparing with {comparison_desc}: {e}")
                 evaluation["promote"] = False
-                evaluation["reason"] = f"Error comparing with {self.comparison_stage}: {e}"
+                evaluation["reason"] = f"Error comparing with {comparison_desc}: {e}"
         else:
-            # No current comparison stage version - promote if meets minimum threshold
+            # No current comparison stage version(s) - promote if meets minimum threshold
             if primary_metric in candidate_metrics:
                 candidate_score = candidate_metrics[primary_metric]
                 min_score = min_threshold.get(primary_metric, 0)
                 
+                comparison_desc = f"{self.comparison_stages}" if len(self.comparison_stages) > 1 else self.comparison_stage
+                
                 if candidate_score >= min_score:
                     evaluation["promote"] = True
                     evaluation["reason"] = (
-                        f"No current {self.comparison_stage} version. "
+                        f"No current {comparison_desc} version(s). "
                         f"Candidate meets minimum threshold ({candidate_score:.4f} >= {min_score:.4f})"
                     )
                 else:
