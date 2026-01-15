@@ -165,6 +165,9 @@ class BaseTrainer(ABC):
             Best parameters (from grid search or defaults)
         best_cv_score : float, optional
             Best cross-validation score (if grid search was used)
+        training_times : dict, optional
+            Dictionary with timing information containing:
+            - best_model_fit_time: float, time to fit the best model in seconds
         """
         pass
 
@@ -190,7 +193,7 @@ class BaseTrainer(ABC):
         X_train: Optional[pd.DataFrame] = None,
         y_train: Optional[pd.Series] = None,
         use_grid_search: bool = False,
-    ) -> Tuple[object, Dict, Optional[float]]:
+    ) -> Tuple[object, Dict, Optional[float], Optional[Dict]]:
         """
         Train the model.
         
@@ -211,6 +214,9 @@ class BaseTrainer(ABC):
             Best parameters
         best_cv_score : float, optional
             Best CV score (if grid search was used)
+        training_times : dict, optional
+            Dictionary with timing information containing:
+            - best_model_fit_time: float, time to fit the best model in seconds
         """
         if X_train is None or y_train is None:
             X, y = self.load_data()
@@ -218,12 +224,12 @@ class BaseTrainer(ABC):
         
         logger.info(f"Training {self.model_type} model...")
         
-        model, best_params, best_cv_score = self._build_model(
+        model, best_params, best_cv_score, training_times = self._build_model(
             X_train, y_train, use_grid_search=use_grid_search
         )
         
         self.model = model
-        return model, best_params, best_cv_score
+        return model, best_params, best_cv_score, training_times
 
     def evaluate(
         self, model: object, X_test: pd.DataFrame, y_test: pd.Series

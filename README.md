@@ -835,8 +835,18 @@ python scripts/manage_model_registry.py get-model \
 
 The prediction script (`src/models/predict_model.py`) supports loading models from the MLflow registry:
 
+**Best Practice: Use MLflow Model Registry for Production Inference**
+
 ```bash
-# Load from Production stage
+# Automatically use best Production model across all model types (recommended)
+python src/models/predict_model.py src/models/test_features.json \
+  --use-best-model
+
+# Or load from Production stage for specific model type
+python src/models/predict_model.py src/models/test_features.json \
+  --use-mlflow-production
+
+# Or explicitly specify model name and stage
 python src/models/predict_model.py src/models/test_features.json \
   --model-name Accident_Prediction_XGBoost \
   --stage Production
@@ -844,16 +854,51 @@ python src/models/predict_model.py src/models/test_features.json \
 # Load specific version
 python src/models/predict_model.py src/models/test_features.json \
   --model-name Accident_Prediction_XGBoost \
-  --version 1
+  --version 6
 
-# Load from local filesystem (default - uses xgboost model)
+# Load from local filesystem (for development/testing only)
 python src/models/predict_model.py src/models/test_features.json \
   --model-path models/xgboost_model.joblib
+
+# Use environment variables
+export USE_BEST_MODEL=true  # Auto-select best model
+# or
+export USE_MLFLOW_PRODUCTION=true  # Use default model type (XGBoost)
+python src/models/predict_model.py src/models/test_features.json
 ```
+
+**Architecture:**
+- **MLflow Model Registry**: Used for production model serving (default with `--use-mlflow-production`)
+- **Local filesystem (DVC)**: Used for development/testing and pipeline reproducibility
+- Models are tracked in DVC for reproducible training pipelines, but production inference loads from MLflow
 
 ### Automatic Staging Transitions
 
 You can enable automatic transition to Staging after model registration by setting `auto_transition_to_staging: true` in the config. This is useful for automated workflows where new models should be immediately available for testing.
+
+### Model Storage Architecture (Best Practices)
+
+**MLflow Model Registry** (for models):
+- ✅ Production model serving and deployment
+- ✅ Model versioning and lifecycle management (Staging → Production → Archived)
+- ✅ Model metadata, metrics, and parameters tracking
+- ✅ Experiment tracking and model comparison
+
+**DVC** (for data):
+- ✅ Data pipeline reproducibility (raw → preprocessed → features)
+- ✅ Data versioning and tracking
+- ✅ Label encoders and preprocessing artifacts
+- ✅ Metrics files for pipeline tracking
+- ⚠️ Model files tracked only for pipeline reproducibility (not for production use)
+
+**Key Points:**
+- Production inference should load from MLflow Model Registry (Production stage)
+- **Multi-model setup**: Use `--use-best-model` to automatically select the best performing Production model across all model types (XGBoost, RandomForest, etc.)
+- Each model type is registered separately: `Accident_Prediction_XGBoost`, `Accident_Prediction_Random_Forest`, etc.
+- Local model files in DVC are for development/testing and pipeline reproducibility only
+- Use `--use-mlflow-production` flag or `USE_MLFLOW_PRODUCTION=true` for production inference (defaults to XGBoost)
+- Use `--use-best-model` flag or `USE_BEST_MODEL=true` to auto-select best model
+- `make dvc-pull` pulls data and training artifacts for local development, not production models
 
 ### Best Practices
 

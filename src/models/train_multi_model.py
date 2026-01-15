@@ -18,12 +18,14 @@ Usage:
 import json
 import logging
 import os
+import time
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional
 
 import click
 import joblib
+import mlflow
 import pandas as pd
 import yaml
 
@@ -117,10 +119,46 @@ def train_single_model(
         # Create trainer
         trainer = create_trainer(model_type, config)
         
+        # Start MLflow run BEFORE training (so duration includes training)
+        if mlflow_enabled:
+            run_name_prefix = "GridSearch" if use_grid_search else "DefaultParams"
+            model_type_capitalized = trainer.model_type.replace("_", " ").title().replace(" ", "_")
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            run_name = f"{model_type_capitalized}_{run_name_prefix}_{timestamp}"
+            
+            mlflow.start_run(run_name=run_name)
+            
+            # Set tags early
+            tags = trainer.get_mlflow_tags()
+            for tag_key, tag_value in tags.items():
+                mlflow.set_tag(tag_key, tag_value)
+            
+            if use_grid_search:
+                mlflow.set_tag("training_method", "grid_search")
+                mlflow.set_tag("hyperparameter_tuning", "true")
+            else:
+                mlflow.set_tag("training_method", "default_params")
+                mlflow.set_tag("hyperparameter_tuning", "false")
+        
+        # Capture overall training start time
+        overall_start_time = time.perf_counter()
+        
         # Train model
-        model, best_params, best_cv_score = trainer.train(
+        model, best_params, best_cv_score, training_times = trainer.train(
             X_train=X_train, y_train=y_train, use_grid_search=use_grid_search
         )
+        
+        # Capture overall training end time
+        overall_end_time = time.perf_counter()
+        overall_training_duration = overall_end_time - overall_start_time
+        
+        # Log timing metrics to MLflow
+        if mlflow_enabled:
+            mlflow.log_metric("overall_training_duration_seconds", overall_training_duration)
+            
+            # Log best model fit time if available
+            if training_times and "best_model_fit_time" in training_times:
+                mlflow.log_metric("best_model_fit_time_seconds", training_times["best_model_fit_time"])
         
         # Evaluate model
         metrics = trainer.evaluate(model, X_test, y_test)
@@ -154,7 +192,7 @@ def train_single_model(
         
         logger.info(f"Metrics saved to {metrics_path}")
         
-        # Log to MLflow
+        # Log to MLflow (run is already started)
         if mlflow_enabled:
             y_pred = model.predict(X_test)
             metrics["y_pred"] = y_pred.tolist()
@@ -172,6 +210,9 @@ def train_single_model(
                 y_test=y_test,
                 use_grid_search=use_grid_search,
             )
+            
+            # End the MLflow run
+            mlflow.end_run()
         
         logger.info(f"✓ {model_type} model training completed")
         
@@ -186,6 +227,9 @@ def train_single_model(
         }
     
     except Exception as e:
+        # Make sure to end MLflow run on error
+        if mlflow_enabled and mlflow.active_run():
+            mlflow.end_run()
         logger.error(f"Failed to train {model_type} model: {e}", exc_info=True)
         return {
             "model_type": model_type,

@@ -9,9 +9,9 @@ model:
 # Multi-model training configuration
 multi_model:
   enabled_models:  # Models to train when using train_multi_model.py (default training method)
-    - "xgboost"
-    - "random_forest"
-    - "logistic_regression"
+    #- "xgboost"
+    #- "random_forest"
+    #- "logistic_regression"
     - "lightgbm"
 
 # XGBoost default parameters (baseline model)
@@ -54,7 +54,7 @@ lightgbm:
 
 # Grid search parameters (for hyperparameter tuning)
 grid_search:
-  enabled: false  # Set to true to enable grid search
+  enabled: true  # Set to true to enable grid search
   cv: 5  # Number of cross-validation folds
   scoring: "f1"  # Scoring metric for grid search
   n_jobs: -1  # Use all available cores
@@ -132,6 +132,29 @@ mlflow:
   model_registry:
     registered_model_name: "Accident_Prediction"  # Base name - model type will be appended automatically (format: Accident_Prediction_{ModelType})
     default_stage: "None"  # Options: None, Staging, Production, Archived
-    auto_transition_to_staging: false  # Auto-promote to Staging after registration
-    production_stage: "Production"  # Stage name for production models
+    auto_transition_to_staging: false  # Auto-promote to Staging after registration. Keep it to false for normal operation.
+    production_stage: "Production"  # Stage name for production models.
+    
+    # Enhanced registry features
+    # Automated model comparison
+    auto_comparison:
+      enabled: true  # Enable automated comparison when models are registered
+      include_stages: ["Production"]  # Stages to include in comparison
+    
+    # Automated promotion workflow
+    auto_promotion:
+      enabled: true  # Enable automated promotion based on performance thresholds
+      target_stage: "Staging"  # Target stage for auto-promotion
+      comparison_stage: ["Staging", "Production"]  # Stage(s) to compare against when evaluating promotion (must outperform this stage)
+                                      # Can be a string (single stage) or array (multiple stages - compares against best)
+                                      # Examples: "Production" or ["Production", "Staging"]
+    
+    # Promotion rules configuration
+    promotion:
+      rules:
+        primary_metric: "f1_score"  # Primary metric for promotion evaluation
+        min_threshold:  # Minimum thresholds for promotion
+          f1_score: 0.65
+          accuracy: 0.77
+        improvement_threshold_pct: 0.1  # Minimum improvement percentage over current Production model
 
