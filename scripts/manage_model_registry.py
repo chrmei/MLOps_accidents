@@ -32,6 +32,7 @@ import argparse
 import logging
 import os
 import sys
+from datetime import datetime
 
 import mlflow
 import yaml
@@ -259,6 +260,155 @@ def archive_model(client, model_name, version):
     transition_model(client, model_name, version, "Archived")
 
 
+def compare_models_enhanced(config_path, model_name, versions=None, stages=None, output_format="html"):
+    """
+    Compare models across versions using enhanced registry.
+    
+    Parameters
+    ----------
+    config_path : str
+        Path to config file
+    model_name : str
+        Model name
+    versions : list of int, optional
+        Specific versions to compare
+    stages : list of str, optional
+        Stages to include
+    output_format : str
+        Output format (html, json, dataframe)
+    """
+    import yaml
+    from src.models.model_registry_enhanced import EnhancedModelRegistry
+    
+    with open(config_path, "r") as f:
+        config = yaml.safe_load(f)
+    
+    registry = EnhancedModelRegistry(config)
+    
+    result = registry.compare_models_across_versions(
+        model_name=model_name,
+        versions=versions,
+        include_stages=stages,
+        output_format=output_format
+    )
+    
+    if output_format == "html" and "html_report" in result:
+        output_file = f"model_comparison_{model_name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.html"
+        with open(output_file, "w") as f:
+            f.write(result["html_report"])
+        print(f"\nComparison report saved to: {output_file}")
+    elif output_format == "json":
+        import json
+        output_file = f"model_comparison_{model_name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+        with open(output_file, "w") as f:
+            json.dump(result, f, indent=2, default=str)
+        print(f"\nComparison report saved to: {output_file}")
+    else:
+        print("\n" + "=" * 80)
+        print("Model Comparison Results")
+        print("=" * 80)
+        if "dataframe" in result:
+            print(result["dataframe"].to_string(index=False))
+        
+        if result.get("recommendations"):
+            print("\nRecommendations:")
+            for rec in result["recommendations"]:
+                print(f"  - {rec['message']}")
+
+
+def evaluate_promotion(config_path, model_name, version, target_stage="Production"):
+    """Evaluate if a model version should be promoted."""
+    import yaml
+    from src.models.model_registry_enhanced import EnhancedModelRegistry
+    
+    with open(config_path, "r") as f:
+        config = yaml.safe_load(f)
+    
+    registry = EnhancedModelRegistry(config)
+    evaluation = registry.evaluate_promotion_candidate(model_name, version, target_stage)
+    
+    print("\n" + "=" * 80)
+    print(f"Promotion Evaluation: {model_name} version {version}")
+    print("=" * 80)
+    print(f"Promote: {'YES' if evaluation['promote'] else 'NO'}")
+    print(f"Reason: {evaluation['reason']}")
+    
+    if evaluation.get("metrics_comparison"):
+        print("\nMetrics Comparison:")
+        import json
+        print(json.dumps(evaluation["metrics_comparison"], indent=2))
+
+
+def auto_promote(config_path, model_name, version, target_stage="Production"):
+    """Automatically promote a model version if it meets criteria."""
+    import yaml
+    from src.models.model_registry_enhanced import EnhancedModelRegistry
+    
+    with open(config_path, "r") as f:
+        config = yaml.safe_load(f)
+    
+    registry = EnhancedModelRegistry(config)
+    result = registry.auto_promote_model(model_name, version, target_stage)
+    
+    print("\n" + "=" * 80)
+    print(f"Auto-Promotion Result: {model_name} version {version}")
+    print("=" * 80)
+    print(f"Promoted: {'YES' if result['promoted'] else 'NO'}")
+    print(f"Reason: {result['reason']}")
+    
+    if result.get("previous_version_archived"):
+        print(f"Previous version {result['previous_version_archived']} archived")
+
+
+def performance_report(config_path, model_name, stage="Production"):
+    """Generate performance report for a model."""
+    import yaml
+    from src.models.model_registry_enhanced import EnhancedModelRegistry
+    
+    with open(config_path, "r") as f:
+        config = yaml.safe_load(f)
+    
+    registry = EnhancedModelRegistry(config)
+    report = registry.generate_performance_report(model_name, stage)
+    
+    print("\n" + "=" * 80)
+    print(f"Performance Report: {model_name} ({stage})")
+    print("=" * 80)
+    print(f"Status: {report.get('status', 'unknown')}")
+    print(f"Report Date: {report.get('report_date', 'N/A')}")
+    
+    if report.get("trends"):
+        print("\nTrends:")
+        import json
+        print(json.dumps(report["trends"], indent=2))
+    
+    if report.get("degradation", {}).get("degradation_detected"):
+        print(f"\n⚠️  Degradation Alert: {report['degradation'].get('alert', 'N/A')}")
+
+
+def detect_degradation(config_path, model_name, stage="Production", metric="f1_score", threshold=5.0):
+    """Detect performance degradation."""
+    import yaml
+    from src.models.model_registry_enhanced import EnhancedModelRegistry
+    
+    with open(config_path, "r") as f:
+        config = yaml.safe_load(f)
+    
+    registry = EnhancedModelRegistry(config)
+    result = registry.detect_performance_degradation(model_name, stage, metric, threshold)
+    
+    print("\n" + "=" * 80)
+    print(f"Degradation Detection: {model_name} ({stage})")
+    print("=" * 80)
+    print(f"Degradation Detected: {'YES' if result.get('degradation_detected') else 'NO'}")
+    
+    if result.get("degradation_detected"):
+        print(f"Degradation: {result.get('degradation_pct', 0):.2f}%")
+        print(f"Alert: {result.get('alert', 'N/A')}")
+    else:
+        print(f"Reason: {result.get('reason', 'N/A')}")
+
+
 def main():
     """Main CLI entry point."""
     parser = argparse.ArgumentParser(
@@ -347,6 +497,113 @@ def main():
         "--version", type=int, required=True, help="Model version number"
     )
 
+    # Enhanced registry commands
+    # Compare models command
+    compare_parser = subparsers.add_parser(
+        "compare-models", help="Compare models across versions (enhanced)"
+    )
+    compare_parser.add_argument(
+        "--model-name", type=str, required=True, help="Name of the registered model"
+    )
+    compare_parser.add_argument(
+        "--versions",
+        type=int,
+        nargs="+",
+        help="Specific versions to compare (optional)",
+    )
+    compare_parser.add_argument(
+        "--stages",
+        type=str,
+        nargs="+",
+        choices=["None", "Staging", "Production", "Archived"],
+        help="Stages to include (optional)",
+    )
+    compare_parser.add_argument(
+        "--output-format",
+        type=str,
+        choices=["html", "json", "dataframe"],
+        default="html",
+        help="Output format (default: html)",
+    )
+
+    # Evaluate promotion command
+    eval_promote_parser = subparsers.add_parser(
+        "evaluate-promotion", help="Evaluate if a model should be promoted"
+    )
+    eval_promote_parser.add_argument(
+        "--model-name", type=str, required=True, help="Name of the registered model"
+    )
+    eval_promote_parser.add_argument(
+        "--version", type=int, required=True, help="Model version number"
+    )
+    eval_promote_parser.add_argument(
+        "--target-stage",
+        type=str,
+        default="Production",
+        choices=["Staging", "Production"],
+        help="Target stage (default: Production)",
+    )
+
+    # Auto-promote command
+    auto_promote_parser = subparsers.add_parser(
+        "auto-promote", help="Automatically promote model if it meets criteria"
+    )
+    auto_promote_parser.add_argument(
+        "--model-name", type=str, required=True, help="Name of the registered model"
+    )
+    auto_promote_parser.add_argument(
+        "--version", type=int, required=True, help="Model version number"
+    )
+    auto_promote_parser.add_argument(
+        "--target-stage",
+        type=str,
+        default="Production",
+        choices=["Staging", "Production"],
+        help="Target stage (default: Production)",
+    )
+
+    # Performance report command
+    perf_report_parser = subparsers.add_parser(
+        "performance-report", help="Generate performance report"
+    )
+    perf_report_parser.add_argument(
+        "--model-name", type=str, required=True, help="Name of the registered model"
+    )
+    perf_report_parser.add_argument(
+        "--stage",
+        type=str,
+        default="Production",
+        choices=["None", "Staging", "Production", "Archived"],
+        help="Stage to report on (default: Production)",
+    )
+
+    # Detect degradation command
+    degradation_parser = subparsers.add_parser(
+        "detect-degradation", help="Detect performance degradation"
+    )
+    degradation_parser.add_argument(
+        "--model-name", type=str, required=True, help="Name of the registered model"
+    )
+    degradation_parser.add_argument(
+        "--stage",
+        type=str,
+        default="Production",
+        choices=["None", "Staging", "Production", "Archived"],
+        help="Stage to check (default: Production)",
+    )
+    degradation_parser.add_argument(
+        "--metric",
+        type=str,
+        default="f1_score",
+        help="Metric to check (default: f1_score)",
+    )
+    degradation_parser.add_argument(
+        "--threshold",
+        type=float,
+        default=5.0,
+        help="Degradation threshold percentage (default: 5.0)",
+    )
+
     args = parser.parse_args()
 
     if not args.command:
@@ -354,20 +611,41 @@ def main():
         sys.exit(1)
 
     try:
-        client = setup_mlflow_client(args.config)
+        # Enhanced registry commands
+        if args.command == "compare-models":
+            compare_models_enhanced(
+                args.config,
+                args.model_name,
+                versions=args.versions,
+                stages=args.stages,
+                output_format=args.output_format,
+            )
+        elif args.command == "evaluate-promotion":
+            evaluate_promotion(args.config, args.model_name, args.version, args.target_stage)
+        elif args.command == "auto-promote":
+            auto_promote(args.config, args.model_name, args.version, args.target_stage)
+        elif args.command == "performance-report":
+            performance_report(args.config, args.model_name, args.stage)
+        elif args.command == "detect-degradation":
+            detect_degradation(
+                args.config, args.model_name, args.stage, args.metric, args.threshold
+            )
+        else:
+            # Original commands
+            client = setup_mlflow_client(args.config)
 
-        if args.command == "list-models":
-            list_models(client)
-        elif args.command == "list-versions":
-            list_versions(client, args.model_name)
-        elif args.command == "transition":
-            transition_model(client, args.model_name, args.version, args.stage)
-        elif args.command == "promote":
-            promote_model(client, args.model_name, args.stage)
-        elif args.command == "get-model":
-            get_model_by_stage(client, args.model_name, args.stage)
-        elif args.command == "archive":
-            archive_model(client, args.model_name, args.version)
+            if args.command == "list-models":
+                list_models(client)
+            elif args.command == "list-versions":
+                list_versions(client, args.model_name)
+            elif args.command == "transition":
+                transition_model(client, args.model_name, args.version, args.stage)
+            elif args.command == "promote":
+                promote_model(client, args.model_name, args.stage)
+            elif args.command == "get-model":
+                get_model_by_stage(client, args.model_name, args.stage)
+            elif args.command == "archive":
+                archive_model(client, args.model_name, args.version)
 
     except Exception as e:
         logger.error(f"Command failed: {e}", exc_info=True)

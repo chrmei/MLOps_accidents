@@ -315,8 +315,10 @@ def log_model_to_mlflow(
                             f"Model registered as '{registered_model_name}' version {model_version_num}"
                         )
                         
-                        # Auto-transition to Staging if configured
+                        # Enhanced registry features
                         registry_config = mlflow_config.get("model_registry", {})
+                        
+                        # Auto-transition to Staging if configured
                         if registry_config.get("auto_transition_to_staging", False):
                             try:
                                 client.transition_model_version_stage(
@@ -331,6 +333,51 @@ def log_model_to_mlflow(
                                 logger.warning(
                                     f"Failed to transition model to Staging: {e}"
                                 )
+                        
+                        # Automated comparison if enabled
+                        if registry_config.get("auto_comparison", {}).get("enabled", False):
+                            try:
+                                from src.models.model_registry_enhanced import EnhancedModelRegistry
+                                enhanced_registry = EnhancedModelRegistry(config)
+                                
+                                # Compare with previous versions
+                                comparison_result = enhanced_registry.compare_models_across_versions(
+                                    model_name=registered_model_name,
+                                    output_format="html"
+                                )
+                                
+                                if comparison_result:
+                                    # Log comparison to MLflow (use current run)
+                                    current_run_id = mlflow.active_run().info.run_id if mlflow.active_run() else None
+                                    enhanced_registry.log_comparison_to_mlflow(
+                                        model_name=registered_model_name,
+                                        comparison_result=comparison_result,
+                                        run_id=current_run_id
+                                    )
+                                    logger.info("Automated model comparison completed and logged")
+                            except Exception as e:
+                                logger.warning(f"Automated comparison failed: {e}")
+                        
+                        # Auto-promotion if enabled
+                        if registry_config.get("auto_promotion", {}).get("enabled", False):
+                            try:
+                                from src.models.model_registry_enhanced import EnhancedModelRegistry
+                                enhanced_registry = EnhancedModelRegistry(config)
+                                
+                                # Evaluate and potentially promote
+                                promotion_result = enhanced_registry.auto_promote_model(
+                                    model_name=registered_model_name,
+                                    candidate_version=int(model_version_num),
+                                    target_stage=registry_config.get("auto_promotion", {}).get("target_stage", "Production")
+                                )
+                                
+                                if promotion_result.get("promoted"):
+                                    logger.info(f"Model automatically promoted: {promotion_result.get('reason')}")
+                                else:
+                                    logger.info(f"Auto-promotion skipped: {promotion_result.get('reason')}")
+                            except Exception as e:
+                                logger.warning(f"Auto-promotion failed: {e}")
+                                
                 except Exception as e:
                     logger.warning(f"Could not retrieve model version: {e}")
             

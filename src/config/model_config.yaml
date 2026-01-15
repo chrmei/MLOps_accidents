@@ -12,7 +12,7 @@ multi_model:
     - "xgboost"
     - "random_forest"
     - "logistic_regression"
-    - "lightgbm"
+    # - "lightgbm"
 
 # XGBoost default parameters (baseline model)
 xgboost:
@@ -132,6 +132,26 @@ mlflow:
   model_registry:
     registered_model_name: "Accident_Prediction"  # Base name - model type will be appended automatically (format: Accident_Prediction_{ModelType})
     default_stage: "None"  # Options: None, Staging, Production, Archived
-    auto_transition_to_staging: false  # Auto-promote to Staging after registration
+    auto_transition_to_staging: true  # Auto-promote to Staging after registration
     production_stage: "Production"  # Stage name for production models
+    
+    # Enhanced registry features
+    # Automated model comparison
+    auto_comparison:
+      enabled: true  # Enable automated comparison when models are registered
+      include_stages: ["Production", "Staging"]  # Stages to include in comparison
+    
+    # Automated promotion workflow
+    auto_promotion:
+      enabled: true  # Enable automated promotion based on performance thresholds
+      target_stage: "Production"  # Target stage for auto-promotion
+    
+    # Promotion rules configuration
+    promotion:
+      rules:
+        primary_metric: "f1_score"  # Primary metric for promotion evaluation
+        min_threshold:  # Minimum thresholds for promotion
+          f1_score: 0.70
+          accuracy: 0.70
+        improvement_threshold_pct: 1.0  # Minimum improvement percentage over current Production model
 
