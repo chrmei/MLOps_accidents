@@ -8,6 +8,7 @@ This script provides utilities for managing models in the MLflow Model Registry:
 - Transition models between stages (None, Staging, Production, Archived)
 - Promote models to production
 - Get model information by stage or version
+- Delete model versions or entire registered models
 
 Usage:
     # List all registered models
@@ -27,6 +28,15 @@ Usage:
 
     # Archive a model version
     python scripts/manage_model_registry.py archive --model-name XGBoost_Accident_Prediction --version 1
+
+    # Delete a specific model version
+    python scripts/manage_model_registry.py delete-version --model-name XGBoost_Accident_Prediction --version 1
+
+    # Delete an entire registered model (all versions) - requires confirmation
+    python scripts/manage_model_registry.py delete-model --model-name XGBoost_Accident_Prediction
+
+    # Delete model without confirmation prompt (use with caution!)
+    python scripts/manage_model_registry.py delete-model --model-name XGBoost_Accident_Prediction --confirm
 """
 import argparse
 import logging
@@ -258,6 +268,69 @@ def archive_model(client, model_name, version):
         Model version number
     """
     transition_model(client, model_name, version, "Archived")
+
+
+def delete_model_version(client, model_name, version):
+    """
+    Delete a specific model version.
+
+    Parameters
+    ----------
+    client : MlflowClient
+        MLflow client
+    model_name : str
+        Name of the registered model
+    version : int
+        Model version number to delete
+    """
+    logger.warning(f"Deleting {model_name} version {version}...")
+    try:
+        client.delete_model_version(name=model_name, version=version)
+        print(f"✓ Successfully deleted {model_name} version {version}")
+    except Exception as e:
+        logger.error(f"Failed to delete model version: {e}")
+        raise
+
+
+def delete_registered_model(client, model_name, confirm=False):
+    """
+    Delete an entire registered model (all versions).
+
+    Parameters
+    ----------
+    client : MlflowClient
+        MLflow client
+    model_name : str
+        Name of the registered model to delete
+    confirm : bool
+        If True, skip confirmation prompt
+    """
+    # Safety check: require confirmation unless explicitly confirmed
+    if not confirm:
+        # Get model info first
+        try:
+            versions = client.search_model_versions(f"name='{model_name}'")
+            num_versions = len(versions) if versions else 0
+            print(f"\n⚠️  WARNING: This will delete the entire model '{model_name}' and all {num_versions} versions!")
+            print("This action cannot be undone.")
+            response = input("Type 'DELETE' to confirm: ")
+            if response != "DELETE":
+                print("Deletion cancelled.")
+                return
+        except Exception as e:
+            logger.warning(f"Could not fetch model info: {e}")
+            response = input(f"Are you sure you want to delete '{model_name}'? Type 'DELETE' to confirm: ")
+            if response != "DELETE":
+                print("Deletion cancelled.")
+                return
+    
+    logger.warning(f"Deleting entire registered model '{model_name}'...")
+    try:
+        client.delete_registered_model(name=model_name)
+        print(f"✓ Successfully deleted registered model '{model_name}' and all its versions")
+    except Exception as e:
+        logger.error(f"Failed to delete registered model: {e}")
+        raise
 
 
 def compare_models_enhanced(config_path, model_name, versions=None, stages=None, output_format="html"):
@@ -497,6 +570,30 @@ def main():
         "--version", type=int, required=True, help="Model version number"
     )
 
+    # Delete version command
+    delete_version_parser = subparsers.add_parser(
+        "delete-version", help="Delete a specific model version"
+    )
+    delete_version_parser.add_argument(
+        "--model-name", type=str, required=True, help="Name of the registered model"
+    )
+    delete_version_parser.add_argument(
+        "--version", type=int, required=True, help="Model version number to delete"
+    )
+
+    # Delete model command
+    delete_model_parser = subparsers.add_parser(
+        "delete-model", help="Delete an entire registered model (all versions)"
+    )
+    delete_model_parser.add_argument(
+        "--model-name", type=str, required=True, help="Name of the registered model to delete"
+    )
+    delete_model_parser.add_argument(
+        "--confirm",
+        action="store_true",
+        help="Skip confirmation prompt (use with caution!)",
+    )
+
     # Enhanced registry commands
     # Compare models command
     compare_parser = subparsers.add_parser(
@@ -646,6 +743,10 @@ def main():
                 get_model_by_stage(client, args.model_name, args.stage)
             elif args.command == "archive":
                 archive_model(client, args.model_name, args.version)
+            elif args.command == "delete-version":
+                delete_model_version(client, args.model_name, args.version)
+            elif args.command == "delete-model":
+                delete_registered_model(client, args.model_name, confirm=args.confirm)
 
     except Exception as e:
         logger.error(f"Command failed: {e}", exc_info=True)

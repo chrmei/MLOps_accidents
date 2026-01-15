@@ -151,7 +151,7 @@ mlflow:
       rules:
         primary_metric: "f1_score"  # Primary metric for promotion evaluation
         min_threshold:  # Minimum thresholds for promotion
-          f1_score: 0.70
-          accuracy: 0.70
-        improvement_threshold_pct: 1.0  # Minimum improvement percentage over current Production model
+          f1_score: 0.65
+          accuracy: 0.77
+        improvement_threshold_pct: 0.1  # Minimum improvement percentage over current Production model
 

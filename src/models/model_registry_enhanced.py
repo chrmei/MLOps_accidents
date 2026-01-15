@@ -409,10 +409,24 @@ class EnhancedModelRegistry:
         run_id : str, optional
             Run ID to log to. If None, creates a new run.
         """
-        if run_id:
-            with mlflow.start_run(run_id=run_id):
+        # Check if we're already in an active run
+        active_run = mlflow.active_run()
+        
+        # If we're already in the target run (or no run_id specified and we're in a run), just log directly
+        if active_run and (not run_id or active_run.info.run_id == run_id):
+            # Already in the correct run, just log artifacts
+            mlflow.set_tag("comparison_type", "model_registry")
+            mlflow.set_tag("model_name", model_name)
+            self._log_comparison_artifacts(comparison_result)
+        elif run_id:
+            # Need to switch to a different run (shouldn't happen in normal flow)
+            # Use nested run to avoid conflicts
+            with mlflow.start_run(run_id=run_id, nested=True):
+                mlflow.set_tag("comparison_type", "model_registry")
+                mlflow.set_tag("model_name", model_name)
                 self._log_comparison_artifacts(comparison_result)
         else:
+            # No active run, create a new one
             with mlflow.start_run(run_name=f"model_comparison_{model_name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"):
                 mlflow.set_tag("comparison_type", "model_registry")
                 mlflow.set_tag("model_name", model_name)

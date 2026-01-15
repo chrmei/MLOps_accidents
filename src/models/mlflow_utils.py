@@ -340,9 +340,14 @@ def log_model_to_mlflow(
                                 from src.models.model_registry_enhanced import EnhancedModelRegistry
                                 enhanced_registry = EnhancedModelRegistry(config)
                                 
-                                # Compare with previous versions
+                                # Get include_stages from config
+                                auto_comparison_config = registry_config.get("auto_comparison", {})
+                                include_stages = auto_comparison_config.get("include_stages")
+                                
+                                # Compare with previous versions (filtered by stages if configured)
                                 comparison_result = enhanced_registry.compare_models_across_versions(
                                     model_name=registered_model_name,
+                                    include_stages=include_stages,
                                     output_format="html"
                                 )
                                 
