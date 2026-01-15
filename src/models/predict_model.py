@@ -5,9 +5,19 @@ Model prediction script for inference.
 This script loads a trained model and makes predictions on new data.
 It uses the same preprocessing pipeline used during training to ensure consistency.
 
+Architecture:
+- MLflow Model Registry: Used for production model serving (default for production)
+- Local filesystem: Used for development/testing and pipeline reproducibility
+
 Supports loading models from:
-- Local filesystem (default)
-- MLflow Model Registry (by stage or version)
+- MLflow Model Registry (recommended for production) - by stage (Production/Staging) or version
+- Local filesystem (for development/testing) - DVC-tracked model files
+
+Best Practice:
+- Production inference should load from MLflow Model Registry (Production stage)
+- Local model files are tracked by DVC for pipeline reproducibility only
+- Use --use-mlflow-production flag or set USE_MLFLOW_PRODUCTION=true to default to MLflow
+- Use --use-best-model flag to automatically select the best performing Production model across all model types
 """
 import json
 import logging
@@ -28,6 +38,231 @@ from src.features.preprocess import align_features_with_model, preprocess_for_in
 # Setup logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
+
+
+def find_best_production_model(
+    config_path: str = "src/config/model_config.yaml",
+    metric: str = "f1_score",
+    stage: str = "Production"
+) -> tuple:
+    """
+    Find the best performing model across all model types in Production stage.
+    
+    This function queries all Production models from MLflow Model Registry,
+    compares their metrics, and returns the best one.
+    
+    Parameters
+    ----------
+    config_path : str
+        Path to configuration file
+    metric : str
+        Metric to use for comparison (default: "f1_score")
+    stage : str
+        Stage to search (default: "Production")
+        
+    Returns
+    -------
+    tuple
+        (model_name, model_type, metrics_dict) or (None, None, None) if no models found
+    """
+    try:
+        import mlflow
+        from mlflow.tracking import MlflowClient
+    except ImportError:
+        raise ImportError(
+            "MLflow is required to find best model. "
+            "Install with: pip install mlflow"
+        )
+    
+    # Setup MLflow
+    if config_path and os.path.exists(config_path):
+        with open(config_path, "r") as f:
+            config = yaml.safe_load(f)
+        mlflow_config = config.get("mlflow", {})
+        tracking_uri = mlflow_config.get("tracking_uri") or os.getenv("MLFLOW_TRACKING_URI")
+    else:
+        tracking_uri = os.getenv("MLFLOW_TRACKING_URI")
+    
+    if not tracking_uri:
+        dagshub_repo = os.getenv("DAGSHUB_REPO")
+        if dagshub_repo:
+            tracking_uri = f"https://dagshub.com/{dagshub_repo}.mlflow"
+        else:
+            raise ValueError(
+                "MLflow tracking URI not configured. "
+                "Set MLFLOW_TRACKING_URI or DAGSHUB_REPO environment variable."
+            )
+    
+    mlflow.set_tracking_uri(tracking_uri)
+    client = MlflowClient()
+    
+    # Get base model name from config
+    if config_path and os.path.exists(config_path):
+        with open(config_path, "r") as f:
+            config = yaml.safe_load(f)
+        mlflow_config = config.get("mlflow", {})
+        registry_config = mlflow_config.get("model_registry", {})
+        base_name = registry_config.get("registered_model_name", "Accident_Prediction")
+    else:
+        base_name = "Accident_Prediction"
+    
+    # Get enabled model types from config
+    enabled_models = []
+    if config_path and os.path.exists(config_path):
+        with open(config_path, "r") as f:
+            config = yaml.safe_load(f)
+        multi_model_config = config.get("multi_model", {})
+        enabled_models = multi_model_config.get("enabled_models", ["xgboost"])
+    else:
+        enabled_models = ["xgboost"]
+    
+    # Search for Production models across all model types
+    best_model = None
+    best_score = None
+    best_model_type = None
+    best_metrics = None
+    
+    for model_type in enabled_models:
+        # Format model type: "xgboost" -> "XGBoost"
+        model_type_formatted = model_type.replace("_", " ").title().replace(" ", "_")
+        model_name = f"{base_name}_{model_type_formatted}"
+        
+        try:
+            # Try to get Production model by alias (lowercase)
+            alias = stage.lower()
+            try:
+                model_version = client.get_model_version_by_alias(model_name, alias)
+            except Exception:
+                # No model with this alias, skip
+                logger.debug(f"No {stage} model found for {model_name}")
+                continue
+            
+            # Get run metrics
+            run = client.get_run(model_version.run_id)
+            metrics = run.data.metrics
+            
+            # Check if the comparison metric exists
+            if metric in metrics:
+                score = metrics[metric]
+                logger.info(f"Found {model_name}: {metric}={score:.4f}")
+                
+                if best_score is None or score > best_score:
+                    best_score = score
+                    best_model = model_name
+                    best_model_type = model_type
+                    best_metrics = metrics
+            else:
+                logger.warning(f"Metric '{metric}' not found for {model_name}")
+                
+        except Exception as e:
+            logger.warning(f"Error checking {model_name}: {e}")
+            continue
+    
+    if best_model:
+        logger.info(
+            f"Best Production model: {best_model} ({best_model_type}) "
+            f"with {metric}={best_score:.4f}"
+        )
+        return best_model, best_model_type, best_metrics
+    else:
+        logger.warning(f"No Production models found across enabled model types")
+        return None, None, None
+
+
+def get_model_name_from_config(model_type: str = "XGBoost", config_path: str = "src/config/model_config.yaml") -> str:
+    """
+    Get registered model name from configuration file.
+    
+    Parameters
+    ----------
+    model_type : str
+        Model type (e.g., "XGBoost", "RandomForest"). Default: "XGBoost"
+    config_path : str
+        Path to configuration file
+        
+    Returns
+    -------
+    str
+        Registered model name (e.g., "Accident_Prediction_XGBoost")
+    """
+    if not os.path.exists(config_path):
+        logger.warning(f"Config file not found: {config_path}. Using default model name.")
+        return f"Accident_Prediction_{model_type}"
+    
+    try:
+        with open(config_path, "r") as f:
+            config = yaml.safe_load(f)
+        
+        mlflow_config = config.get("mlflow", {})
+        registry_config = mlflow_config.get("model_registry", {})
+        base_name = registry_config.get("registered_model_name", "Accident_Prediction")
+        
+        # Format model type: "XGBoost" -> "XGBoost", "random_forest" -> "Random_Forest"
+        model_type_formatted = model_type.replace("_", " ").title().replace(" ", "_")
+        return f"{base_name}_{model_type_formatted}"
+    except Exception as e:
+        logger.warning(f"Error reading config: {e}. Using default model name.")
+        return f"Accident_Prediction_{model_type}"
+
+
+def load_model_for_inference(
+    model_type: str = "XGBoost",
+    stage: str = "Production",
+    version: int = None,
+    config_path: str = "src/config/model_config.yaml",
+    fallback_to_local: bool = True,
+    local_model_path: str = None
+):
+    """
+    Load model for inference - defaults to MLflow Production stage (best practice).
+    
+    This function implements the best practice: MLflow for production models, 
+    local filesystem as fallback for development.
+    
+    Parameters
+    ----------
+    model_type : str
+        Model type (e.g., "XGBoost", "RandomForest"). Default: "XGBoost"
+    stage : str
+        MLflow stage (default: "Production"). Use "Staging" for testing.
+    version : int, optional
+        Specific model version. If None, uses the model at the specified stage.
+    config_path : str
+        Path to configuration file
+    fallback_to_local : bool
+        If True, falls back to local filesystem if MLflow load fails
+    local_model_path : str, optional
+        Path to local model file for fallback. If None, uses default path.
+        
+    Returns
+    -------
+    tuple
+        (model, label_encoders, metadata) tuple
+    """
+    model_name = get_model_name_from_config(model_type, config_path)
+    
+    # Try MLflow first (production path)
+    try:
+        logger.info(f"Loading model from MLflow Model Registry: {model_name} (stage: {stage})")
+        return load_model_from_registry(
+            model_name=model_name,
+            stage=stage,
+            version=version,
+            config_path=config_path
+        )
+    except Exception as e:
+        if fallback_to_local:
+            logger.warning(
+                f"MLflow load failed: {e}. "
+                f"Falling back to local filesystem (development mode)."
+            )
+            if local_model_path is None:
+                # Default local path based on model type
+                model_type_lower = model_type.lower().replace("_", "_")
+                local_model_path = f"models/{model_type_lower}_model.joblib"
+            return load_model_artifacts(local_model_path)
+        else:
+            raise
 
 
 def load_model_from_registry(
@@ -218,8 +453,11 @@ def predict(
     features: dict,
     model_path: str = None,
     model_name: str = None,
+    model_type: str = "XGBoost",
     stage: str = None,
     version: int = None,
+    use_mlflow_production: bool = None,
+    use_best_model: bool = None,
     config_path: str = "src/config/model_config.yaml",
 ):
     """
@@ -227,18 +465,36 @@ def predict(
     
     This function applies the same preprocessing pipeline used during training.
     
+    Best Practice: Use MLflow Model Registry for production inference.
+    Set use_mlflow_production=True or USE_MLFLOW_PRODUCTION=true to default to MLflow Production.
+    Set use_best_model=True to automatically select the best performing Production model.
+    
     Parameters
     ----------
     features : dict
         Input features dictionary
     model_path : str, optional
         Path to the trained model file (for local filesystem loading)
+        Ignored if use_mlflow_production=True or model_name is provided
     model_name : str, optional
         Name of the registered model (for MLflow registry loading)
+        If None and use_mlflow_production=True, inferred from config or best model
+    model_type : str
+        Model type (e.g., "XGBoost", "RandomForest"). Used when inferring model_name.
+        Default: "XGBoost". Ignored if use_best_model=True
     stage : str, optional
-        Stage name (Staging, Production) - required if loading from registry
+        Stage name (Staging, Production). Default: "Production" if use_mlflow_production=True
     version : int, optional
         Model version number - alternative to stage for registry loading
+    use_mlflow_production : bool, optional
+        If True, loads from MLflow Production stage (best practice).
+        If None, checks USE_MLFLOW_PRODUCTION environment variable.
+        If False or not set, uses local filesystem (development mode)
+    use_best_model : bool, optional
+        If True, automatically finds and uses the best performing Production model
+        across all model types (compares by f1_score).
+        If None, checks USE_BEST_MODEL environment variable.
+        Overrides model_name and model_type if set.
     config_path : str
         Path to configuration file (for MLflow setup)
         
@@ -247,16 +503,49 @@ def predict(
     prediction : array
         Model prediction
     """
+    # Check if we should use MLflow Production (best practice)
+    if use_mlflow_production is None:
+        use_mlflow_production = os.getenv("USE_MLFLOW_PRODUCTION", "false").lower() == "true"
+    
+    # Check if we should use best model across all types
+    if use_best_model is None:
+        use_best_model = os.getenv("USE_BEST_MODEL", "false").lower() == "true"
+    
     # Determine loading method
-    if model_name:
-        # Load from MLflow registry
+    if use_mlflow_production or model_name or use_best_model:
+        # Load from MLflow registry (production path)
+        if use_best_model:
+            # Find best model across all Production models
+            logger.info("Finding best Production model across all model types...")
+            best_model_name, best_model_type, best_metrics = find_best_production_model(
+                config_path=config_path,
+                stage=stage or "Production"
+            )
+            
+            if best_model_name:
+                model_name = best_model_name
+                model_type = best_model_type
+                logger.info(f"Using best model: {model_name} (type: {model_type})")
+            else:
+                # Fallback to default if no Production models found
+                logger.warning("No Production models found, falling back to default XGBoost")
+                model_name = get_model_name_from_config("XGBoost", config_path)
+                model_type = "XGBoost"
+        elif model_name is None:
+            model_name = get_model_name_from_config(model_type, config_path)
+        
+        if stage is None:
+            stage = "Production"  # Default to Production stage
+        
+        logger.info(f"Loading model from MLflow Model Registry: {model_name} (stage: {stage})")
         model, label_encoders, metadata = load_model_from_registry(
             model_name, stage=stage, version=version, config_path=config_path
         )
     else:
-        # Load from local filesystem (default)
+        # Load from local filesystem (development/testing mode)
         if model_path is None:
             model_path = "models/trained_model.joblib"
+        logger.info(f"Loading model from local filesystem: {model_path}")
         model, label_encoders, metadata = load_model_artifacts(model_path)
 
     # Get preprocessing parameters from metadata or use defaults
@@ -317,23 +606,42 @@ if __name__ == "__main__":
     parser.add_argument(
         "--model-path",
         type=str,
-        help="Path to local model file (default: models/trained_model.joblib)",
+        help="Path to local model file (for development/testing). Ignored if --use-mlflow-production is set.",
     )
     parser.add_argument(
         "--model-name",
         type=str,
-        help="Name of registered model in MLflow (for registry loading)",
+        help="Name of registered model in MLflow (for registry loading). If not provided and --use-mlflow-production is set, inferred from config.",
+    )
+    parser.add_argument(
+        "--model-type",
+        type=str,
+        default="XGBoost",
+        help="Model type (e.g., XGBoost, RandomForest). Used when inferring model name. Default: XGBoost",
     )
     parser.add_argument(
         "--stage",
         type=str,
         choices=["Staging", "Production"],
-        help="Stage name for registry loading (required if --model-name is used)",
+        help="Stage name for registry loading. Default: Production if --use-mlflow-production is set",
     )
     parser.add_argument(
         "--version",
         type=int,
         help="Model version number for registry loading (alternative to --stage)",
+    )
+    parser.add_argument(
+        "--use-mlflow-production",
+        action="store_true",
+        help="Load model from MLflow Production stage (best practice for production inference). "
+             "Can also be set via USE_MLFLOW_PRODUCTION=true environment variable.",
+    )
+    parser.add_argument(
+        "--use-best-model",
+        action="store_true",
+        help="Automatically find and use the best performing Production model across all model types "
+             "(compares by f1_score). Overrides --model-name and --model-type. "
+             "Can also be set via USE_BEST_MODEL=true environment variable.",
     )
     parser.add_argument(
         "--config",
@@ -345,8 +653,8 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     # Validate arguments
-    if args.model_name and not args.stage and not args.version:
-        parser.error("--stage or --version is required when using --model-name")
+    if args.model_name and not args.stage and not args.version and not args.use_mlflow_production:
+        parser.error("--stage or --version is required when using --model-name (or use --use-mlflow-production)")
 
     # Load features from JSON file
     try:
@@ -369,8 +677,11 @@ if __name__ == "__main__":
             features,
             model_path=args.model_path,
             model_name=args.model_name,
+            model_type=args.model_type,
             stage=args.stage,
             version=args.version,
+            use_mlflow_production=args.use_mlflow_production,
+            use_best_model=args.use_best_model,
             config_path=args.config,
         )
         print(f"\nPrediction: {result[0]}")

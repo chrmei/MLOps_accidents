@@ -10,8 +10,8 @@ model:
 multi_model:
   enabled_models:  # Models to train when using train_multi_model.py (default training method)
     - "xgboost"
-    #- "random_forest"
-    #- "logistic_regression"
+    - "random_forest"
+    - "logistic_regression"
     # - "lightgbm"
 
 # XGBoost default parameters (baseline model)
@@ -132,7 +132,7 @@ mlflow:
   model_registry:
     registered_model_name: "Accident_Prediction"  # Base name - model type will be appended automatically (format: Accident_Prediction_{ModelType})
     default_stage: "None"  # Options: None, Staging, Production, Archived
-    auto_transition_to_staging: true  # Auto-promote to Staging after registration
+    auto_transition_to_staging: false  # Auto-promote to Staging after registration. Keep it to false for normal operation.
     production_stage: "Production"  # Stage name for production models.
     
     # Enhanced registry features
@@ -143,7 +143,7 @@ mlflow:
     
     # Automated promotion workflow
     auto_promotion:
-      enabled: false  # Enable automated promotion based on performance thresholds
+      enabled: true  # Enable automated promotion based on performance thresholds
       target_stage: "Staging"  # Target stage for auto-promotion
       comparison_stage: "Production"  # Stage to compare against when evaluating promotion (must outperform this stage)
     

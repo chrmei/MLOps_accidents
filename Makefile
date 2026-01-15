@@ -1,4 +1,4 @@
-.PHONY: help install install-dev sync lock update clean lint format type-check test test-cov run-import run-preprocess run-features run-train run-train-grid run-predict run-predict-file workflow-all workflow-data workflow-ml dvc-init dvc-setup-remote dvc-status dvc-push dvc-pull dvc-repro docker-build docker-build-dev docker-build-prod docker-build-train docker-run-dev docker-run-prod docker-run-train docker-dvc-pull docker-clean
+.PHONY: help install install-dev sync lock update clean lint format type-check test test-cov run-import run-preprocess run-features run-train run-train-grid run-predict run-predict-file workflow-all workflow-data workflow-ml dvc-init dvc-setup-remote dvc-status dvc-push dvc-pull dvc-repro docker-build docker-build-dev docker-build-prod docker-build-train docker-run-dev docker-run-prod docker-run-train docker-run-predict docker-run-predict-mlflow docker-run-predict-best docker-dvc-pull docker-clean
 
 # Load .env file if it exists (cross-platform with GNU Make)
 # Note: On Windows, use Git Bash, WSL, or another Unix-like environment
@@ -127,17 +127,33 @@ run-train-single: ## Train single XGBoost model (legacy - use run-train for mult
 	@echo "Training single XGBoost model (legacy mode)..."
 	$(PYTHON) src/models/train_model.py
 
-run-predict: ## Make predictions using default JSON file (src/models/test_features.json)
-	@echo "Making predictions from default JSON file..."
+run-predict: ## Make predictions using default JSON file (src/models/test_features.json) - uses local model (development mode)
+	@echo "Making predictions from default JSON file (local model)..."
 	$(PYTHON) src/models/predict_model.py
+
+run-predict-mlflow: ## Make predictions using MLflow Production model (best practice for production)
+	@echo "Making predictions using MLflow Production model..."
+	$(PYTHON) src/models/predict_model.py --use-mlflow-production
+
+run-predict-best: ## Make predictions using best Production model across all model types (automatically selects best)
+	@echo "Making predictions using best Production model (auto-selected)..."
+	$(PYTHON) src/models/predict_model.py --use-best-model
 
 run-predict-file: ## Make predictions from JSON file (usage: make run-predict-file FILE=src/models/test_features.json)
 	@if [ -z "$(FILE)" ]; then \
 		echo "Error: FILE variable is required. Usage: make run-predict-file FILE=path/to/file.json"; \
 		exit 1; \
 	fi
-	@echo "Making predictions from $(FILE)..."
+	@echo "Making predictions from $(FILE) (local model)..."
 	$(PYTHON) src/models/predict_model.py $(FILE)
+
+run-predict-file-mlflow: ## Make predictions from JSON file using MLflow Production (usage: make run-predict-file-mlflow FILE=src/models/test_features.json)
+	@if [ -z "$(FILE)" ]; then \
+		echo "Error: FILE variable is required. Usage: make run-predict-file-mlflow FILE=path/to/file.json"; \
+		exit 1; \
+	fi
+	@echo "Making predictions from $(FILE) using MLflow Production model..."
+	$(PYTHON) src/models/predict_model.py $(FILE) --use-mlflow-production
 
 # Complete workflow commands
 workflow-all: $(if $(NOCONFIRM),,run-import) run-preprocess run-features $(if $(filter 1,$(GRID_SEARCH)),run-train-grid,run-train) run-predict ## Run complete pipeline (use GRID_SEARCH=1 for grid search, NOCONFIRM=1 to skip raw data import and auto-confirm overwrites): import → preprocess → features → train → predict
@@ -253,6 +269,34 @@ docker-run-train: ## Run training pipeline in container (non-interactive)
 docker-run-train-interactive: ## Run training container with interactive shell
 	@echo "Starting training container (interactive)..."
 	docker run -it --rm -v $(PWD):/app mlops-accidents:train bash
+
+docker-run-predict: ## Run prediction in Docker container (usage: make docker-run-predict [ARGS="--use-best-model"])
+	@echo "Running prediction in Docker container..."
+	@if [ -z "$(ARGS)" ]; then \
+		docker run --rm -v $(PWD):/app \
+			-e DAGSHUB_REPO=$(DAGSHUB_REPO) \
+			-e MLFLOW_TRACKING_URI=$(MLFLOW_TRACKING_URI) \
+			-e USE_BEST_MODEL=$(USE_BEST_MODEL) \
+			-e USE_MLFLOW_PRODUCTION=$(USE_MLFLOW_PRODUCTION) \
+			mlops-accidents:dev \
+			python src/models/predict_model.py --use-best-model; \
+	else \
+		docker run --rm -v $(PWD):/app \
+			-e DAGSHUB_REPO=$(DAGSHUB_REPO) \
+			-e MLFLOW_TRACKING_URI=$(MLFLOW_TRACKING_URI) \
+			-e USE_BEST_MODEL=$(USE_BEST_MODEL) \
+			-e USE_MLFLOW_PRODUCTION=$(USE_MLFLOW_PRODUCTION) \
+			mlops-accidents:dev \
+			python src/models/predict_model.py $(ARGS); \
+	fi
+
+docker-run-predict-mlflow: ## Run prediction using MLflow Production model in Docker
+	@echo "Running prediction with MLflow Production model..."
+	@make docker-run-predict ARGS="--use-mlflow-production"
+
+docker-run-predict-best: ## Run prediction using best Production model in Docker
+	@echo "Running prediction with best Production model..."
+	@make docker-run-predict ARGS="--use-best-model"
 
 docker-dvc-pull: ## Pull data/models from DVC remote using Docker Compose
 	@echo "Pulling data/models from DVC remote via Docker..."
