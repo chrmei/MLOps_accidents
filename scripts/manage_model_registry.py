@@ -5,10 +5,13 @@ MLflow Model Registry Management Script
 
 This script provides utilities for managing models in the MLflow Model Registry:
 - List registered models and versions
-- Transition models between stages (None, Staging, Production, Archived)
+- Assign aliases to model versions (replaces deprecated stages: staging, production, archived)
 - Promote models to production
-- Get model information by stage or version
+- Get model information by alias or version
 - Delete model versions or entire registered models
+
+Note: This script uses MLflow aliases instead of deprecated stages. Aliases are
+lowercase versions of stage names (e.g., "Production" -> "production" alias).
 
 Usage:
     # List all registered models
@@ -17,16 +20,16 @@ Usage:
     # List all versions of a model
     python scripts/manage_model_registry.py list-versions --model-name XGBoost_Accident_Prediction
 
-    # Transition a model version to a stage
+    # Assign an alias to a model version (replaces stage transition)
     python scripts/manage_model_registry.py transition --model-name XGBoost_Accident_Prediction --version 1 --stage Production
 
-    # Promote latest version to Production
+    # Promote latest version to Production (assigns "production" alias)
     python scripts/manage_model_registry.py promote --model-name XGBoost_Accident_Prediction --stage Production
 
-    # Get model info by stage
+    # Get model info by alias
     python scripts/manage_model_registry.py get-model --model-name XGBoost_Accident_Prediction --stage Production
 
-    # Archive a model version
+    # Archive a model version (assigns "archived" alias)
     python scripts/manage_model_registry.py archive --model-name XGBoost_Accident_Prediction --version 1
 
     # Delete a specific model version
@@ -161,7 +164,7 @@ def list_versions(client, model_name):
 
 def transition_model(client, model_name, version, stage):
     """
-    Transition a model version to a specific stage.
+    Assign an alias to a model version (replaces deprecated stage transition).
 
     Parameters
     ----------
@@ -172,20 +175,49 @@ def transition_model(client, model_name, version, stage):
     version : int
         Model version number
     stage : str
-        Target stage (None, Staging, Production, Archived)
+        Target stage/alias (None, Staging, Production, Archived)
     """
     valid_stages = ["None", "Staging", "Production", "Archived"]
     if stage not in valid_stages:
         raise ValueError(f"Invalid stage '{stage}'. Must be one of: {valid_stages}")
 
-    logger.info(f"Transitioning {model_name} version {version} to {stage}...")
+    logger.info(f"Assigning '{stage.lower()}' alias to {model_name} version {version}...")
     try:
-        client.transition_model_version_stage(
-            name=model_name, version=version, stage=stage
-        )
-        print(f"✓ Successfully transitioned {model_name} version {version} to {stage}")
+        # Convert stage to lowercase alias (e.g., "Production" -> "production")
+        alias = stage.lower()
+        
+        # If stage is "None", remove any existing aliases instead
+        if stage == "None":
+            # Try to remove common aliases if they exist
+            for common_alias in ["staging", "production", "archived"]:
+                try:
+                    existing_mv = client.get_model_version_by_alias(model_name, common_alias)
+                    if existing_mv.version == str(version):
+                        client.delete_registered_model_alias(model_name, common_alias)
+                        print(f"✓ Removed '{common_alias}' alias from {model_name} version {version}")
+                        return
+                except Exception:
+                    pass
+            print(f"✓ No alias to remove for {model_name} version {version}")
+        else:
+            # Remove alias from any previous version that had it
+            try:
+                previous_mv = client.get_model_version_by_alias(model_name, alias)
+                client.delete_registered_model_alias(model_name, alias)
+                logger.info(f"Removed '{alias}' alias from version {previous_mv.version}")
+            except Exception:
+                # No previous version with this alias, which is fine
+                pass
+            
+            # Set alias for the specified version
+            client.set_registered_model_alias(
+                name=model_name,
+                alias=alias,
+                version=str(version)
+            )
+            print(f"✓ Successfully assigned '{alias}' alias to {model_name} version {version}")
     except Exception as e:
-        logger.error(f"Failed to transition model: {e}")
+        logger.error(f"Failed to assign alias: {e}")
         raise
 
 
@@ -218,7 +250,7 @@ def promote_model(client, model_name, stage="Production"):
 
 def get_model_by_stage(client, model_name, stage):
     """
-    Get model information by stage.
+    Get model information by alias (replaces deprecated stage-based lookup).
 
     Parameters
     ----------
@@ -227,28 +259,40 @@ def get_model_by_stage(client, model_name, stage):
     model_name : str
         Name of the registered model
     stage : str
-        Stage name (Staging, Production, etc.)
+        Alias name (Staging, Production, etc.)
     """
-    logger.info(f"Fetching {model_name} from {stage} stage...")
+    logger.info(f"Fetching {model_name} with '{stage.lower()}' alias...")
     try:
-        model_version = client.get_latest_versions(model_name, stages=[stage])
-        if not model_version:
-            print(f"No model found in {stage} stage for '{model_name}'")
+        # Convert stage to lowercase alias (e.g., "Production" -> "production")
+        alias = stage.lower()
+        
+        try:
+            version = client.get_model_version_by_alias(model_name, alias)
+            print("\n" + "=" * 80)
+            print(f"Model: {model_name} (Alias: {alias})")
+            print("=" * 80)
+            print(f"Version: {version.version}")
+            print(f"Alias: {alias}")
+            print(f"Status: {version.status}")
+            print(f"Created: {version.creation_timestamp}")
+            print(f"Run ID: {version.run_id}")
+            print(f"Model URI: models:/{model_name}@{alias}")
+            if version.description:
+                print(f"Description: {version.description}")
+            print("=" * 80 + "\n")
+        except Exception:
+            # Fallback: search for versions if alias doesn't exist
+            print(f"No model found with '{alias}' alias for '{model_name}'")
+            print("Searching for latest version...")
+            model_versions = client.search_model_versions(
+                f"name='{model_name}'",
+                max_results=1,
+                order_by=["version_number DESC"]
+            )
+            if model_versions:
+                version = model_versions[0]
+                print(f"\nLatest version found: {version.version} (no alias assigned)")
             return
-
-        version = model_version[0]
-        print("\n" + "=" * 80)
-        print(f"Model: {model_name} (Stage: {stage})")
-        print("=" * 80)
-        print(f"Version: {version.version}")
-        print(f"Stage: {version.current_stage}")
-        print(f"Status: {version.status}")
-        print(f"Created: {version.creation_timestamp}")
-        print(f"Run ID: {version.run_id}")
-        print(f"Model URI: models:/{model_name}/{stage}")
-        if version.description:
-            print(f"Description: {version.description}")
-        print("=" * 80 + "\n")
     except Exception as e:
         logger.error(f"Failed to get model: {e}")
         raise
@@ -433,55 +477,6 @@ def auto_promote(config_path, model_name, version, target_stage="Production"):
         print(f"Previous version {result['previous_version_archived']} archived")
 
 
-def performance_report(config_path, model_name, stage="Production"):
-    """Generate performance report for a model."""
-    import yaml
-    from src.models.model_registry_enhanced import EnhancedModelRegistry
-    
-    with open(config_path, "r") as f:
-        config = yaml.safe_load(f)
-    
-    registry = EnhancedModelRegistry(config)
-    report = registry.generate_performance_report(model_name, stage)
-    
-    print("\n" + "=" * 80)
-    print(f"Performance Report: {model_name} ({stage})")
-    print("=" * 80)
-    print(f"Status: {report.get('status', 'unknown')}")
-    print(f"Report Date: {report.get('report_date', 'N/A')}")
-    
-    if report.get("trends"):
-        print("\nTrends:")
-        import json
-        print(json.dumps(report["trends"], indent=2))
-    
-    if report.get("degradation", {}).get("degradation_detected"):
-        print(f"\n⚠️  Degradation Alert: {report['degradation'].get('alert', 'N/A')}")
-
-
-def detect_degradation(config_path, model_name, stage="Production", metric="f1_score", threshold=5.0):
-    """Detect performance degradation."""
-    import yaml
-    from src.models.model_registry_enhanced import EnhancedModelRegistry
-    
-    with open(config_path, "r") as f:
-        config = yaml.safe_load(f)
-    
-    registry = EnhancedModelRegistry(config)
-    result = registry.detect_performance_degradation(model_name, stage, metric, threshold)
-    
-    print("\n" + "=" * 80)
-    print(f"Degradation Detection: {model_name} ({stage})")
-    print("=" * 80)
-    print(f"Degradation Detected: {'YES' if result.get('degradation_detected') else 'NO'}")
-    
-    if result.get("degradation_detected"):
-        print(f"Degradation: {result.get('degradation_pct', 0):.2f}%")
-        print(f"Alert: {result.get('alert', 'N/A')}")
-    else:
-        print(f"Reason: {result.get('reason', 'N/A')}")
-
-
 def main():
     """Main CLI entry point."""
     parser = argparse.ArgumentParser(
@@ -659,48 +654,6 @@ def main():
         help="Target stage (default: Production)",
     )
 
-    # Performance report command
-    perf_report_parser = subparsers.add_parser(
-        "performance-report", help="Generate performance report"
-    )
-    perf_report_parser.add_argument(
-        "--model-name", type=str, required=True, help="Name of the registered model"
-    )
-    perf_report_parser.add_argument(
-        "--stage",
-        type=str,
-        default="Production",
-        choices=["None", "Staging", "Production", "Archived"],
-        help="Stage to report on (default: Production)",
-    )
-
-    # Detect degradation command
-    degradation_parser = subparsers.add_parser(
-        "detect-degradation", help="Detect performance degradation"
-    )
-    degradation_parser.add_argument(
-        "--model-name", type=str, required=True, help="Name of the registered model"
-    )
-    degradation_parser.add_argument(
-        "--stage",
-        type=str,
-        default="Production",
-        choices=["None", "Staging", "Production", "Archived"],
-        help="Stage to check (default: Production)",
-    )
-    degradation_parser.add_argument(
-        "--metric",
-        type=str,
-        default="f1_score",
-        help="Metric to check (default: f1_score)",
-    )
-    degradation_parser.add_argument(
-        "--threshold",
-        type=float,
-        default=5.0,
-        help="Degradation threshold percentage (default: 5.0)",
-    )
-
     args = parser.parse_args()
 
     if not args.command:
@@ -721,12 +674,6 @@ def main():
             evaluate_promotion(args.config, args.model_name, args.version, args.target_stage)
         elif args.command == "auto-promote":
             auto_promote(args.config, args.model_name, args.version, args.target_stage)
-        elif args.command == "performance-report":
-            performance_report(args.config, args.model_name, args.stage)
-        elif args.command == "detect-degradation":
-            detect_degradation(
-                args.config, args.model_name, args.stage, args.metric, args.threshold
-            )
         else:
             # Original commands
             client = setup_mlflow_client(args.config)

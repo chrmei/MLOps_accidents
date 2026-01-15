@@ -1,17 +1,22 @@
 # -*- coding: utf-8 -*-
 """
-Enhanced MLflow Model Registry with automated comparison, promotion, and performance tracking.
+Enhanced MLflow Model Registry with automated comparison and promotion workflows.
 
 This module provides:
 1. Automated model comparison across different training runs/versions
 2. Automated model promotion workflow based on performance thresholds
-3. Model performance tracking over time with degradation detection
+3. Model visualization and comparison reports
+
+Note: Performance tracking over time and degradation detection are handled by
+Evidently AI (planned for Phase 4). Prometheus/Grafana will handle production
+metrics visualization and alerting.
 """
 import json
 import logging
 import os
 import tempfile
 import time
+import warnings
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
@@ -26,6 +31,9 @@ import pandas as pd
 import seaborn as sns
 from mlflow.tracking import MlflowClient
 
+# Suppress FutureWarnings for deprecated MLflow methods
+warnings.filterwarnings('ignore', category=FutureWarning, module='mlflow')
+
 logger = logging.getLogger(__name__)
 
 
@@ -36,8 +44,11 @@ class EnhancedModelRegistry:
     Features:
     - Automated model comparison across versions
     - Performance-based promotion automation
-    - Time-series performance tracking
-    - Degradation detection
+    - Model visualization and comparison reports
+    
+    Note: Performance tracking over time and degradation detection are handled by
+    Evidently AI (planned for Phase 4). Prometheus/Grafana will handle production
+    metrics visualization and alerting.
     """
     
     def __init__(self, config: Dict):
@@ -53,6 +64,9 @@ class EnhancedModelRegistry:
         self.mlflow_config = config.get("mlflow", {})
         self.registry_config = self.mlflow_config.get("model_registry", {})
         self.promotion_config = self.registry_config.get("promotion", {})
+        # Get comparison stage from auto_promotion config (defaults to Production)
+        auto_promotion_config = self.registry_config.get("auto_promotion", {})
+        self.comparison_stage = auto_promotion_config.get("comparison_stage", "Production")
         
         # Setup MLflow client
         self._setup_mlflow_client()
@@ -104,22 +118,26 @@ class EnhancedModelRegistry:
         logger.info(f"Comparing versions of model '{model_name}'")
         
         # Get model versions
-        if versions:
-            model_versions = []
-            for version in versions:
-                try:
-                    mv = self.client.get_model_version(model_name, version)
-                    model_versions.append(mv)
-                except Exception as e:
-                    logger.warning(f"Could not fetch version {version}: {e}")
-        else:
-            # Get all versions
-            filter_string = f"name='{model_name}'"
-            if include_stages:
-                stage_filter = " OR ".join([f"current_stage='{s}'" for s in include_stages])
-                filter_string += f" AND ({stage_filter})"
-            
-            model_versions = self.client.search_model_versions(filter_string)
+        try:
+            if versions:
+                model_versions = []
+                for version in versions:
+                    try:
+                        mv = self.client.get_model_version(model_name, version)
+                        model_versions.append(mv)
+                    except Exception as e:
+                        logger.warning(f"Could not fetch version {version}: {e}")
+            else:
+                # Get all versions using search_model_versions without filter (works with DagsHub)
+                all_versions = self.client.search_model_versions()
+                model_versions = [mv for mv in all_versions if mv.name == model_name]
+                
+                # Filter by stages if specified
+                if include_stages and model_versions:
+                    model_versions = [mv for mv in model_versions if mv.current_stage in include_stages]
+        except Exception as e:
+            logger.warning(f"Error fetching model versions for '{model_name}': {e}")
+            return {}
         
         if not model_versions:
             logger.warning(f"No versions found for model '{model_name}'")
@@ -412,21 +430,16 @@ class EnhancedModelRegistry:
         # Check if we're already in an active run
         active_run = mlflow.active_run()
         
-        # If we're already in the target run (or no run_id specified and we're in a run), just log directly
-        if active_run and (not run_id or active_run.info.run_id == run_id):
-            # Already in the correct run, just log artifacts
+        # If we're already in an active run, log directly to it
+        # (This is the normal case during training)
+        if active_run:
+            # Log directly to the current active run
             mlflow.set_tag("comparison_type", "model_registry")
             mlflow.set_tag("model_name", model_name)
             self._log_comparison_artifacts(comparison_result)
-        elif run_id:
-            # Need to switch to a different run (shouldn't happen in normal flow)
-            # Use nested run to avoid conflicts
-            with mlflow.start_run(run_id=run_id, nested=True):
-                mlflow.set_tag("comparison_type", "model_registry")
-                mlflow.set_tag("model_name", model_name)
-                self._log_comparison_artifacts(comparison_result)
         else:
             # No active run, create a new one
+            # Note: We don't use nested runs as they're not supported by all MLflow backends
             with mlflow.start_run(run_name=f"model_comparison_{model_name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"):
                 mlflow.set_tag("comparison_type", "model_registry")
                 mlflow.set_tag("model_name", model_name)
@@ -506,12 +519,23 @@ class EnhancedModelRegistry:
                 "reason": f"Error fetching candidate version: {e}",
             }
         
-        # Get current Production version (if exists)
+        # Compare against the stage specified in auto_promotion.comparison_stage config
+        # Use alias instead of deprecated stage
         try:
-            prod_versions = self.client.get_latest_versions(model_name, stages=[target_stage])
-            current_prod = prod_versions[0] if prod_versions else None
+            # Convert stage name to lowercase alias (e.g., "Production" -> "production")
+            comparison_alias = self.comparison_stage.lower()
+            try:
+                current_prod = self.client.get_model_version_by_alias(model_name, comparison_alias)
+            except Exception:
+                # Fallback: search for versions if alias doesn't exist
+                comparison_versions = self.client.search_model_versions(
+                    f"name='{model_name}'",
+                    max_results=1,
+                    order_by=["version_number DESC"]
+                )
+                current_prod = comparison_versions[0] if comparison_versions else None
         except Exception as e:
-            logger.warning(f"Could not fetch current {target_stage} version: {e}")
+            logger.warning(f"Could not fetch current {self.comparison_stage} version: {e}")
             current_prod = None
         
         evaluation = {
@@ -541,7 +565,7 @@ class EnhancedModelRegistry:
                 )
                 return evaluation
         
-        # Compare with current Production (if exists)
+        # Compare with current comparison stage version (if exists)
         if current_prod:
             try:
                 prod_run = self.client.get_run(current_prod.run_id)
@@ -555,14 +579,14 @@ class EnhancedModelRegistry:
                     
                     evaluation["metrics_comparison"] = {
                         "candidate": {primary_metric: candidate_score},
-                        "current_production": {primary_metric: prod_score},
+                        f"current_{self.comparison_stage.lower()}": {primary_metric: prod_score},
                         "improvement_pct": improvement_pct,
                     }
                     
                     if improvement_pct >= improvement_threshold:
                         evaluation["promote"] = True
                         evaluation["reason"] = (
-                            f"Candidate outperforms Production by {improvement_pct:.2f}% "
+                            f"Candidate outperforms {self.comparison_stage} by {improvement_pct:.2f}% "
                             f"(threshold: {improvement_threshold}%)"
                         )
                     else:
@@ -576,11 +600,11 @@ class EnhancedModelRegistry:
                     evaluation["reason"] = f"Primary metric '{primary_metric}' not found in both versions"
                     
             except Exception as e:
-                logger.warning(f"Error comparing with Production: {e}")
+                logger.warning(f"Error comparing with {self.comparison_stage}: {e}")
                 evaluation["promote"] = False
-                evaluation["reason"] = f"Error comparing with Production: {e}"
+                evaluation["reason"] = f"Error comparing with {self.comparison_stage}: {e}"
         else:
-            # No current Production version - promote if meets minimum threshold
+            # No current comparison stage version - promote if meets minimum threshold
             if primary_metric in candidate_metrics:
                 candidate_score = candidate_metrics[primary_metric]
                 min_score = min_threshold.get(primary_metric, 0)
@@ -588,7 +612,7 @@ class EnhancedModelRegistry:
                 if candidate_score >= min_score:
                     evaluation["promote"] = True
                     evaluation["reason"] = (
-                        f"No current {target_stage} version. "
+                        f"No current {self.comparison_stage} version. "
                         f"Candidate meets minimum threshold ({candidate_score:.4f} >= {min_score:.4f})"
                     )
                 else:
@@ -649,28 +673,32 @@ class EnhancedModelRegistry:
         
         # Perform promotion
         try:
-            # Get current Production version (if exists) for potential rollback
-            prod_versions = self.client.get_latest_versions(model_name, stages=[target_stage])
-            previous_prod_version = prod_versions[0].version if prod_versions else None
+            # Get current version with target alias (if exists) for potential rollback
+            # Convert stage name to lowercase alias (e.g., "Production" -> "production")
+            target_alias = target_stage.lower()
+            previous_prod_version = None
+            try:
+                previous_prod_mv = self.client.get_model_version_by_alias(model_name, target_alias)
+                previous_prod_version = previous_prod_mv.version
+            except Exception:
+                # No existing version with this alias
+                pass
             
-            # Transition candidate to target stage
-            self.client.transition_model_version_stage(
+            # Set alias for candidate version (replaces deprecated stage transition)
+            self.client.set_registered_model_alias(
                 name=model_name,
-                version=candidate_version,
-                stage=target_stage
+                alias=target_alias,
+                version=str(candidate_version)
             )
             
-            # Archive previous Production version if exists
+            # Remove alias from previous version if exists (replaces archiving)
             if previous_prod_version:
                 try:
-                    self.client.transition_model_version_stage(
-                        name=model_name,
-                        version=previous_prod_version,
-                        stage="Archived"
-                    )
+                    # Delete the alias from the previous version
+                    self.client.delete_registered_model_alias(model_name, target_alias)
                     result["previous_version_archived"] = previous_prod_version
                 except Exception as e:
-                    logger.warning(f"Could not archive previous version: {e}")
+                    logger.warning(f"Could not remove alias from previous version: {e}")
             
             result["promoted"] = True
             result["reason"] = "Promotion successful"
@@ -706,196 +734,3 @@ class EnhancedModelRegistry:
         except Exception as e:
             logger.warning(f"Could not log promotion event: {e}")
     
-    def track_performance_over_time(
-        self,
-        model_name: str,
-        stage: str = "Production",
-        metric_name: str = "f1_score"
-    ) -> pd.DataFrame:
-        """
-        Track model performance over time for a specific stage.
-        
-        Parameters
-        ----------
-        model_name : str
-            Model name
-        stage : str
-            Stage to track (default: Production)
-        metric_name : str
-            Metric to track (default: f1_score)
-            
-        Returns
-        -------
-        pd.DataFrame
-            DataFrame with performance history
-        """
-        logger.info(f"Tracking performance over time for {model_name} in {stage} stage")
-        
-        # Get all versions in the specified stage
-        try:
-            versions = self.client.search_model_versions(f"name='{model_name}' AND current_stage='{stage}'")
-        except Exception as e:
-            logger.error(f"Error fetching versions: {e}")
-            return pd.DataFrame()
-        
-        if not versions:
-            logger.warning(f"No versions found in {stage} stage")
-            return pd.DataFrame()
-        
-        # Collect performance data
-        performance_data = []
-        for mv in versions:
-            try:
-                run = self.client.get_run(mv.run_id)
-                
-                if metric_name in run.data.metrics:
-                    performance_data.append({
-                        "version": int(mv.version),
-                        "timestamp": mv.creation_timestamp,
-                        metric_name: run.data.metrics[metric_name],
-                        "stage": mv.current_stage,
-                    })
-            except Exception as e:
-                logger.warning(f"Error processing version {mv.version}: {e}")
-                continue
-        
-        if not performance_data:
-            return pd.DataFrame()
-        
-        df = pd.DataFrame(performance_data)
-        df = df.sort_values("timestamp")
-        
-        return df
-    
-    def detect_performance_degradation(
-        self,
-        model_name: str,
-        stage: str = "Production",
-        metric_name: str = "f1_score",
-        threshold_pct: float = 5.0
-    ) -> Dict:
-        """
-        Detect performance degradation over time.
-        
-        Parameters
-        ----------
-        model_name : str
-            Model name
-        stage : str
-            Stage to check
-        metric_name : str
-            Metric to check
-        threshold_pct : float
-            Degradation threshold percentage
-            
-        Returns
-        -------
-        dict
-            Degradation detection result
-        """
-        logger.info(f"Detecting performance degradation for {model_name} in {stage}")
-        
-        # Get performance history
-        history_df = self.track_performance_over_time(model_name, stage, metric_name)
-        
-        if len(history_df) < 2:
-            return {
-                "degradation_detected": False,
-                "reason": "Insufficient history for degradation detection",
-            }
-        
-        # Calculate degradation
-        latest_value = history_df.iloc[-1][metric_name]
-        previous_value = history_df.iloc[-2][metric_name]
-        
-        degradation_pct = ((previous_value - latest_value) / previous_value) * 100
-        
-        result = {
-            "degradation_detected": degradation_pct > threshold_pct,
-            "degradation_pct": degradation_pct,
-            "threshold_pct": threshold_pct,
-            "latest_version": int(history_df.iloc[-1]["version"]),
-            "previous_version": int(history_df.iloc[-2]["version"]),
-            "latest_value": float(latest_value),
-            "previous_value": float(previous_value),
-        }
-        
-        if result["degradation_detected"]:
-            result["alert"] = (
-                f"Performance degradation detected: {degradation_pct:.2f}% decrease "
-                f"in {metric_name} from version {result['previous_version']} to {result['latest_version']}"
-            )
-            logger.warning(result["alert"])
-        
-        return result
-    
-    def generate_performance_report(
-        self,
-        model_name: str,
-        stage: str = "Production"
-    ) -> Dict:
-        """
-        Generate comprehensive performance report for a model stage.
-        
-        Parameters
-        ----------
-        model_name : str
-            Model name
-        stage : str
-            Stage to report on
-            
-        Returns
-        -------
-        dict
-            Performance report with history, trends, and alerts
-        """
-        logger.info(f"Generating performance report for {model_name} in {stage}")
-        
-        # Track performance over time
-        history_df = self.track_performance_over_time(model_name, stage)
-        
-        report = {
-            "model_name": model_name,
-            "stage": stage,
-            "report_date": datetime.now().isoformat(),
-            "history": history_df.to_dict("records") if not history_df.empty else [],
-        }
-        
-        if history_df.empty:
-            report["status"] = "no_history"
-            report["message"] = "No performance history available"
-            return report
-        
-        # Calculate trends
-        metrics_to_analyze = ["f1_score", "accuracy", "precision", "recall"]
-        trends = {}
-        
-        for metric in metrics_to_analyze:
-            if metric in history_df.columns:
-                values = history_df[metric].values
-                if len(values) >= 2:
-                    trend = "improving" if values[-1] > values[0] else "degrading"
-                    change_pct = ((values[-1] - values[0]) / values[0]) * 100
-                    trends[metric] = {
-                        "trend": trend,
-                        "change_pct": float(change_pct),
-                        "latest": float(values[-1]),
-                        "earliest": float(values[0]),
-                    }
-        
-        report["trends"] = trends
-        
-        # Detect degradation
-        degradation = self.detect_performance_degradation(model_name, stage)
-        report["degradation"] = degradation
-        
-        # Overall status
-        if degradation.get("degradation_detected"):
-            report["status"] = "degrading"
-        elif trends and any(t.get("trend") == "improving" for t in trends.values()):
-            report["status"] = "improving"
-        else:
-            report["status"] = "stable"
-        
-        return report
-

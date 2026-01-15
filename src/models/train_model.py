@@ -634,29 +634,34 @@ def log_to_mlflow(
                 try:
                     from mlflow.tracking import MlflowClient
                     client = MlflowClient()
-                    # Get the latest version (should be the one we just created)
-                    latest_versions = client.get_latest_versions(registered_model_name, stages=[])
-                    if latest_versions:
-                        model_version_num = latest_versions[0].version
+                    # Use search_model_versions instead of deprecated get_latest_versions
+                    model_versions = client.search_model_versions(
+                        f"name='{registered_model_name}'",
+                        max_results=1,
+                        order_by=["version_number DESC"]
+                    )
+                    if model_versions:
+                        model_version_num = model_versions[0].version
                         logger.info(
                             f"Model registered as '{registered_model_name}' version {model_version_num}"
                         )
                         
-                        # Auto-transition to Staging if configured
+                        # Auto-assign staging alias if configured (replaces deprecated stage transition)
                         if registry_config.get("auto_transition_to_staging", False):
                             try:
-                                client.transition_model_version_stage(
+                                # Use aliases instead of deprecated stage transitions
+                                client.set_registered_model_alias(
                                     name=registered_model_name,
-                                    version=model_version_num,
-                                    stage="Staging"
+                                    alias="staging",
+                                    version=model_version_num
                                 )
                                 logger.info(
-                                    f"Model version {model_version_num} automatically transitioned to Staging"
+                                    f"Model version {model_version_num} automatically assigned 'staging' alias"
                                 )
                             except Exception as e:
                                 logger.warning(
-                                    f"Failed to transition model to Staging: {e}. "
-                                    "You can manually transition using scripts/manage_model_registry.py"
+                                    f"Failed to assign staging alias: {e}. "
+                                    "You can manually assign using scripts/manage_model_registry.py"
                                 )
                     else:
                         logger.warning("Could not retrieve model version after registration")

@@ -7,6 +7,7 @@ with the multi-model training framework.
 """
 import logging
 import os
+import warnings
 from datetime import datetime
 from typing import Dict, Optional
 
@@ -19,6 +20,9 @@ import numpy as np
 import pandas as pd
 import seaborn as sns
 from sklearn.metrics import auc, confusion_matrix, roc_curve
+
+# Suppress FutureWarnings for deprecated MLflow methods
+warnings.filterwarnings('ignore', category=FutureWarning, module='mlflow')
 
 logger = logging.getLogger(__name__)
 
@@ -300,17 +304,25 @@ def log_model_to_mlflow(
                 logger.info("Logging model to MLflow...")
                 registered_model_name = trainer.get_registered_model_name()
                 
-                mlflow.sklearn.log_model(
-                    model, "model", registered_model_name=registered_model_name
+                model_info = mlflow.sklearn.log_model(
+                    model, name="model", registered_model_name=registered_model_name
                 )
                 
                 # Get the version that was just created
                 try:
                     from mlflow.tracking import MlflowClient
                     client = MlflowClient()
-                    latest_versions = client.get_latest_versions(registered_model_name, stages=[])
-                    if latest_versions:
-                        model_version_num = latest_versions[0].version
+                    
+                    # Use search_model_versions instead of deprecated get_latest_versions
+                    # Get the latest version by searching for the model name and sorting by version
+                    model_versions = client.search_model_versions(
+                        f"name='{registered_model_name}'",
+                        max_results=1,
+                        order_by=["version_number DESC"]
+                    )
+                    
+                    if model_versions:
+                        model_version_num = model_versions[0].version
                         logger.info(
                             f"Model registered as '{registered_model_name}' version {model_version_num}"
                         )
@@ -318,20 +330,21 @@ def log_model_to_mlflow(
                         # Enhanced registry features
                         registry_config = mlflow_config.get("model_registry", {})
                         
-                        # Auto-transition to Staging if configured
+                        # Auto-assign staging alias if configured (replaces deprecated stage transition)
                         if registry_config.get("auto_transition_to_staging", False):
                             try:
-                                client.transition_model_version_stage(
+                                # Use aliases instead of deprecated stage transitions
+                                client.set_registered_model_alias(
                                     name=registered_model_name,
-                                    version=model_version_num,
-                                    stage="Staging"
+                                    alias="staging",
+                                    version=model_version_num
                                 )
                                 logger.info(
-                                    f"Model version {model_version_num} automatically transitioned to Staging"
+                                    f"Model version {model_version_num} automatically assigned 'staging' alias"
                                 )
                             except Exception as e:
                                 logger.warning(
-                                    f"Failed to transition model to Staging: {e}"
+                                    f"Failed to assign staging alias: {e}"
                                 )
                         
                         # Automated comparison if enabled
