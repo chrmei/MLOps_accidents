@@ -1,4 +1,8 @@
-.PHONY: help install install-dev sync lock update clean lint format type-check test test-cov run-import run-preprocess run-features run-train run-train-grid run-predict run-predict-file workflow-all workflow-data workflow-ml dvc-init dvc-setup-remote dvc-status dvc-push dvc-pull dvc-repro docker-build docker-build-dev docker-build-prod docker-build-train docker-run-dev docker-run-prod docker-run-train docker-run-predict docker-run-predict-mlflow docker-run-predict-best docker-dvc-pull docker-clean
+.PHONY: help install install-dev sync lock update clean lint format type-check test test-cov run-import run-preprocess run-features run-train run-train-grid run-predict run-predict-file run-predict-mlflow run-predict-best run-predict-file-mlflow workflow-all workflow-data workflow-ml docker-build docker-build-dev docker-build-prod docker-build-train docker-run-dev docker-run-dev-detached docker-run-dev-exec docker-run-fetch-data docker-run-preprocess docker-run-train docker-run-train-interactive docker-run-predict docker-run-predict-mlflow docker-run-predict-best docker-workflow-all docker-workflow-data docker-workflow-ml docker-dvc-pull docker-clean setup setup-venv dvc-init dvc-setup-remote dvc-status dvc-push dvc-pull dvc-repro
+
+# ============================================================================
+# CONFIGURATION
+# ============================================================================
 
 # Load .env file if it exists (cross-platform with GNU Make)
 # Note: On Windows, use Git Bash, WSL, or another Unix-like environment
@@ -25,6 +29,10 @@ ISORT := $(shell if [ -f .venv/bin/isort ]; then echo .venv/bin/isort; else echo
 MYPY := $(shell if [ -f .venv/bin/mypy ]; then echo .venv/bin/mypy; else echo mypy; fi)
 PYTEST := $(shell if [ -f .venv/bin/pytest ]; then echo .venv/bin/pytest; else echo pytest; fi)
 DVC := $(shell if [ -f .venv/bin/dvc ]; then echo .venv/bin/dvc; else echo dvc; fi)
+
+# ============================================================================
+# HELP & SETUP
+# ============================================================================
 
 help: ## Show this help message
 	@echo "Available targets:"
@@ -58,6 +66,21 @@ update: check-uv ## Update all dependencies to latest versions
 	@echo "Updating dependencies with UV..."
 	uv pip install --upgrade -e ".[dev]"
 
+setup: check-uv ## Initial project setup (install dependencies)
+	@echo "Setting up project..."
+	@echo "Python version: $(PYTHON_VERSION)"
+	@echo "Installing dependencies..."
+	uv pip install -e ".[dev]"
+	@echo "Setup complete!"
+
+setup-venv: check-uv ## Create virtual environment and install dependencies
+	@echo "Creating virtual environment with Python $(PYTHON_VERSION)..."
+	python$(PYTHON_VERSION) -m venv .venv
+	@echo "Activating virtual environment and installing dependencies..."
+	.venv/bin/pip install --upgrade pip
+	uv pip install -e ".[dev]"
+	@echo "Virtual environment created! Activate it with: source .venv/bin/activate"
+
 clean: ## Remove build artifacts and cache files
 	@echo "Cleaning build artifacts..."
 	rm -rf build/
@@ -71,6 +94,10 @@ clean: ## Remove build artifacts and cache files
 	find . -type d -name ".mypy_cache" -exec rm -r {} + 2>/dev/null || true
 	find . -type d -name ".coverage" -exec rm -r {} + 2>/dev/null || true
 	find . -type d -name "htmlcov" -exec rm -r {} + 2>/dev/null || true
+
+# ============================================================================
+# CODE QUALITY & TESTING
+# ============================================================================
 
 lint: ## Run linting with flake8
 	@echo "Running flake8..."
@@ -102,44 +129,43 @@ test-cov: ## Run tests with coverage report
 	@echo "Running tests with coverage..."
 	$(PYTEST) --cov=src --cov-report=term-missing --cov-report=html
 
-# Data pipeline commands
-run-import: ## Import raw data from S3
+# ============================================================================
+# DATA PIPELINE - LOCAL (for local development/debugging)
+# ============================================================================
+
+run-import: ## [LOCAL] Import raw data from S3
 	@echo "Importing raw data..."
 	$(PYTHON) src/data/import_raw_data.py
 
-run-preprocess: ## Create interim dataset from raw data
+run-preprocess: ## [LOCAL] Create interim dataset from raw data
 	@echo "Preprocessing data (creating interim dataset)..."
 	NOCONFIRM=$(NOCONFIRM) $(PYTHON) src/data/make_dataset.py
 
-run-features: ## Build features from interim dataset (XGBoost-optimized)
+run-features: ## [LOCAL] Build features from interim dataset
 	@echo "Building features from interim dataset..."
 	NOCONFIRM=$(NOCONFIRM) $(PYTHON) src/features/build_features.py
 
-run-train: ## Train multiple models with default parameters (fast, no grid search)
+run-train: ## [LOCAL] Train multiple models with default parameters (fast, no grid search)
 	@echo "Training multiple models with default parameters..."
 	$(PYTHON) src/models/train_multi_model.py
 
-run-train-grid: ## Train multiple models with grid search for hyperparameter tuning (slow)
+run-train-grid: ## [LOCAL] Train multiple models with grid search for hyperparameter tuning (slow)
 	@echo "Training multiple models with grid search (this may take a while)..."
 	$(PYTHON) src/models/train_multi_model.py --grid-search
 
-run-train-single: ## Train single XGBoost model (legacy - use run-train for multi-model)
-	@echo "Training single XGBoost model (legacy mode)..."
-	$(PYTHON) src/models/train_model.py
-
-run-predict: ## Make predictions using default JSON file (src/models/test_features.json) - uses local model (development mode)
+run-predict: ## [LOCAL] Make predictions using default JSON file (src/models/test_features.json) - uses local model (development mode)
 	@echo "Making predictions from default JSON file (local model)..."
 	$(PYTHON) src/models/predict_model.py
 
-run-predict-mlflow: ## Make predictions using MLflow Production model (best practice for production)
+run-predict-mlflow: ## [LOCAL] Make predictions using MLflow Production model (best practice for production)
 	@echo "Making predictions using MLflow Production model..."
 	$(PYTHON) src/models/predict_model.py --use-mlflow-production
 
-run-predict-best: ## Make predictions using best Production model across all model types (automatically selects best)
+run-predict-best: ## [LOCAL] Make predictions using best Production model across all model types (automatically selects best)
 	@echo "Making predictions using best Production model (auto-selected)..."
 	$(PYTHON) src/models/predict_model.py --use-best-model
 
-run-predict-file: ## Make predictions from JSON file (usage: make run-predict-file FILE=src/models/test_features.json)
+run-predict-file: ## [LOCAL] Make predictions from JSON file (usage: make run-predict-file FILE=src/models/test_features.json)
 	@if [ -z "$(FILE)" ]; then \
 		echo "Error: FILE variable is required. Usage: make run-predict-file FILE=path/to/file.json"; \
 		exit 1; \
@@ -147,7 +173,7 @@ run-predict-file: ## Make predictions from JSON file (usage: make run-predict-fi
 	@echo "Making predictions from $(FILE) (local model)..."
 	$(PYTHON) src/models/predict_model.py $(FILE)
 
-run-predict-file-mlflow: ## Make predictions from JSON file using MLflow Production (usage: make run-predict-file-mlflow FILE=src/models/test_features.json)
+run-predict-file-mlflow: ## [LOCAL] Make predictions from JSON file using MLflow Production (usage: make run-predict-file-mlflow FILE=src/models/test_features.json)
 	@if [ -z "$(FILE)" ]; then \
 		echo "Error: FILE variable is required. Usage: make run-predict-file-mlflow FILE=path/to/file.json"; \
 		exit 1; \
@@ -155,72 +181,85 @@ run-predict-file-mlflow: ## Make predictions from JSON file using MLflow Product
 	@echo "Making predictions from $(FILE) using MLflow Production model..."
 	$(PYTHON) src/models/predict_model.py $(FILE) --use-mlflow-production
 
-# Complete workflow commands
-workflow-all: $(if $(NOCONFIRM),,run-import) run-preprocess run-features $(if $(filter 1,$(GRID_SEARCH)),run-train-grid,run-train) run-predict ## Run complete pipeline (use GRID_SEARCH=1 for grid search, NOCONFIRM=1 to skip raw data import and auto-confirm overwrites): import → preprocess → features → train → predict
+# ============================================================================
+# DATA PIPELINE - DOCKER
+# ============================================================================
+# once microservices are implemented the commands below will change to use the microservices instead of the local commands
+
+docker-run-fetch-data: ## [DOCKER] Fetch/import raw data from S3 in container
+	@echo "Fetching raw data in container..."
+	docker run --rm -v $(PWD):/app mlops-accidents:dev make run-import
+
+docker-run-preprocess: ## [DOCKER] Run preprocessing and feature engineering in container (preprocess + features)
+	@echo "Running preprocessing and feature engineering in container..."
+	docker run --rm -v $(PWD):/app mlops-accidents:dev bash -c "make run-preprocess && make run-features"
+
+docker-run-train: ## [DOCKER] Run training pipeline in container (non-interactive) - assumes features are already built
+	@echo "Starting training container..."
+	docker run --rm -v $(PWD):/app mlops-accidents:train run-train
+
+docker-run-train-interactive: ## [DOCKER] Run training container with interactive shell
+	@echo "Starting training container (interactive)..."
+	docker run -it --rm -v $(PWD):/app mlops-accidents:train bash
+
+docker-run-predict: ## [DOCKER] Run prediction in Docker container (usage: make docker-run-predict [ARGS="--use-best-model"])
+	@echo "Running prediction in Docker container..."
+	@if [ -z "$(ARGS)" ]; then \
+		docker run --rm -v $(PWD):/app \
+			-e DAGSHUB_REPO=$(DAGSHUB_REPO) \
+			-e MLFLOW_TRACKING_URI=$(MLFLOW_TRACKING_URI) \
+			-e USE_BEST_MODEL=$(USE_BEST_MODEL) \
+			-e USE_MLFLOW_PRODUCTION=$(USE_MLFLOW_PRODUCTION) \
+			mlops-accidents:dev \
+			python src/models/predict_model.py --use-best-model; \
+	else \
+		docker run --rm -v $(PWD):/app \
+			-e DAGSHUB_REPO=$(DAGSHUB_REPO) \
+			-e MLFLOW_TRACKING_URI=$(MLFLOW_TRACKING_URI) \
+			-e USE_BEST_MODEL=$(USE_BEST_MODEL) \
+			-e USE_MLFLOW_PRODUCTION=$(USE_MLFLOW_PRODUCTION) \
+			mlops-accidents:dev \
+			python src/models/predict_model.py $(ARGS); \
+	fi
+
+docker-run-predict-mlflow: ## [DOCKER] Run prediction using MLflow Production model in Docker
+	@echo "Running prediction with MLflow Production model..."
+	@make docker-run-predict ARGS="--use-mlflow-production"
+
+docker-run-predict-best: ## [DOCKER] Run prediction using best Production model in Docker
+	@echo "Running prediction with best Production model..."
+	@make docker-run-predict ARGS="--use-best-model"
+
+# ============================================================================
+# WORKFLOWS - LOCAL
+# ============================================================================
+
+workflow-all: $(if $(NOCONFIRM),,run-import) run-preprocess run-features $(if $(filter 1,$(GRID_SEARCH)),run-train-grid,run-train) run-predict ## [LOCAL] Complete pipeline (use GRID_SEARCH=1 for grid search, NOCONFIRM=1 to skip raw data import and auto-confirm overwrites): import → preprocess → features → train → predict
 	@echo "Complete workflow finished!"
 
-workflow-data: run-import run-preprocess ## Run data pipeline: import → preprocess
+workflow-data: run-import run-preprocess ## [LOCAL] Data pipeline: import → preprocess
 	@echo "Data pipeline finished!"
 
-workflow-ml: run-features run-train ## Run ML pipeline: features → train
+workflow-ml: run-features run-train ## [LOCAL] ML pipeline: features → train
 	@echo "ML pipeline finished!"
 
-# Setup commands
-setup: check-uv ## Initial project setup (install dependencies)
-	@echo "Setting up project..."
-	@echo "Python version: $(PYTHON_VERSION)"
-	@echo "Installing dependencies..."
-	uv pip install -e ".[dev]"
-	@echo "Setup complete!"
+# ============================================================================
+# WORKFLOWS - DOCKER
+# ============================================================================
 
-setup-venv: check-uv ## Create virtual environment and install dependencies
-	@echo "Creating virtual environment with Python $(PYTHON_VERSION)..."
-	python$(PYTHON_VERSION) -m venv .venv
-	@echo "Activating virtual environment and installing dependencies..."
-	.venv/bin/pip install --upgrade pip
-	uv pip install -e ".[dev]"
-	@echo "Virtual environment created! Activate it with: source .venv/bin/activate"
+docker-workflow-all: docker-run-fetch-data docker-run-preprocess docker-run-train docker-run-predict-best ## [DOCKER] Complete pipeline in Docker: fetch → preprocess → train → predict
+	@echo "Complete Docker workflow finished!"
 
-# DVC commands
-dvc-init: ## Initialize DVC repository
-	@echo "Initializing DVC..."
-	$(DVC) init
-	@echo "DVC initialized! Run 'make dvc-setup-remote' to configure Dagshub remote."
+docker-workflow-data: docker-run-fetch-data docker-run-preprocess ## [DOCKER] Data pipeline in Docker: fetch → preprocess
+	@echo "Data pipeline finished!"
 
-dvc-setup-remote: ## Configure DVC remote with Dagshub (requires .env file)
-	@if [ -z "$(DAGSHUB_USERNAME)" ] || [ -z "$(DAGSHUB_TOKEN)" ] || [ -z "$(DAGSHUB_REPO)" ]; then \
-		echo "Error: DAGSHUB_USERNAME, DAGSHUB_TOKEN, and DAGSHUB_REPO must be set in .env file"; \
-		echo "Please ensure .env file exists and contains these variables."; \
-		exit 1; \
-	fi
-	@echo "Setting up DVC remote with Dagshub..."
-	@$(DVC) remote add origin s3://dvc 2>/dev/null || $(DVC) remote modify origin url s3://dvc
-	@$(DVC) remote modify origin endpointurl https://dagshub.com/$(DAGSHUB_REPO).s3
-	@$(DVC) remote modify origin --local access_key_id $(DAGSHUB_TOKEN)
-	@$(DVC) remote modify origin --local secret_access_key $(DAGSHUB_TOKEN)
-	@echo "DVC remote configured successfully!"
-	@echo "Repository: $(DAGSHUB_REPO)"
-	@echo "Endpoint: https://dagshub.com/$(DAGSHUB_REPO).s3"
+docker-workflow-ml: docker-run-preprocess docker-run-train ## [DOCKER] ML pipeline in Docker: preprocess → train
+	@echo "ML pipeline finished!"
 
-dvc-status: ## Check DVC status
-	@echo "Checking DVC status..."
-	$(DVC) status
+# ============================================================================
+# DOCKER BUILD & MANAGEMENT
+# ============================================================================
 
-dvc-push: ## Push data to DVC remote
-	@echo "Pushing data to DVC remote..."
-	$(DVC) push
-
-dvc-pull: ## Pull data from DVC remote
-	@echo "Pulling data from DVC remote..."
-	$(DVC) pull
-
-dvc-repro: ## Reproduce DVC pipeline
-	@echo "Pulling data from DVC remote (if available)..."
-	@$(DVC) pull || echo "Warning: Some files not found in remote, will regenerate..."
-	@echo "Reproducing DVC pipeline..."
-	@$(DVC) repro
-
-# Docker commands
 docker-build: ## Build all Docker images (dev, prod, train)
 	@echo "Building all Docker images..."
 	docker build -t mlops-accidents:dev --target dev .
@@ -262,48 +301,53 @@ docker-run-dev-exec: ## Run command in dev container (usage: make docker-run-dev
 # 	@echo "Starting production container..."
 # 	docker run -it --rm -v $(PWD)/models:/app/models -v $(PWD)/data:/app/data mlops-accidents:prod
 
-docker-run-train: ## Run training pipeline in container (non-interactive)
-	@echo "Starting training container..."
-	docker run --rm -v $(PWD):/app mlops-accidents:train
-
-docker-run-train-interactive: ## Run training container with interactive shell
-	@echo "Starting training container (interactive)..."
-	docker run -it --rm -v $(PWD):/app mlops-accidents:train bash
-
-docker-run-predict: ## Run prediction in Docker container (usage: make docker-run-predict [ARGS="--use-best-model"])
-	@echo "Running prediction in Docker container..."
-	@if [ -z "$(ARGS)" ]; then \
-		docker run --rm -v $(PWD):/app \
-			-e DAGSHUB_REPO=$(DAGSHUB_REPO) \
-			-e MLFLOW_TRACKING_URI=$(MLFLOW_TRACKING_URI) \
-			-e USE_BEST_MODEL=$(USE_BEST_MODEL) \
-			-e USE_MLFLOW_PRODUCTION=$(USE_MLFLOW_PRODUCTION) \
-			mlops-accidents:dev \
-			python src/models/predict_model.py --use-best-model; \
-	else \
-		docker run --rm -v $(PWD):/app \
-			-e DAGSHUB_REPO=$(DAGSHUB_REPO) \
-			-e MLFLOW_TRACKING_URI=$(MLFLOW_TRACKING_URI) \
-			-e USE_BEST_MODEL=$(USE_BEST_MODEL) \
-			-e USE_MLFLOW_PRODUCTION=$(USE_MLFLOW_PRODUCTION) \
-			mlops-accidents:dev \
-			python src/models/predict_model.py $(ARGS); \
-	fi
-
-docker-run-predict-mlflow: ## Run prediction using MLflow Production model in Docker
-	@echo "Running prediction with MLflow Production model..."
-	@make docker-run-predict ARGS="--use-mlflow-production"
-
-docker-run-predict-best: ## Run prediction using best Production model in Docker
-	@echo "Running prediction with best Production model..."
-	@make docker-run-predict ARGS="--use-best-model"
-
 docker-dvc-pull: ## Pull data/models from DVC remote using Docker Compose
 	@echo "Pulling data/models from DVC remote via Docker..."
 	docker compose --profile dvc up dvc-pull
 
-# update mlops-accidents:prod if prod target is uncommented in Dockerfile
 docker-clean: ## Remove all Docker images and containers
 	@echo "Cleaning up Docker images..."
 	docker rmi mlops-accidents:dev mlops-accidents:train 2>/dev/null || true
 	@echo "Cleanup complete!"
+
+# ============================================================================
+# DVC COMMANDS
+# ============================================================================
+
+dvc-init: ## Initialize DVC repository
+	@echo "Initializing DVC..."
+	$(DVC) init
+	@echo "DVC initialized! Run 'make dvc-setup-remote' to configure Dagshub remote."
+
+dvc-setup-remote: ## Configure DVC remote with Dagshub (requires .env file)
+	@if [ -z "$(DAGSHUB_USERNAME)" ] || [ -z "$(DAGSHUB_TOKEN)" ] || [ -z "$(DAGSHUB_REPO)" ]; then \
+		echo "Error: DAGSHUB_USERNAME, DAGSHUB_TOKEN, and DAGSHUB_REPO must be set in .env file"; \
+		echo "Please ensure .env file exists and contains these variables."; \
+		exit 1; \
+	fi
+	@echo "Setting up DVC remote with Dagshub..."
+	@$(DVC) remote add origin s3://dvc 2>/dev/null || $(DVC) remote modify origin url s3://dvc
+	@$(DVC) remote modify origin endpointurl https://dagshub.com/$(DAGSHUB_REPO).s3
+	@$(DVC) remote modify origin --local access_key_id $(DAGSHUB_TOKEN)
+	@$(DVC) remote modify origin --local secret_access_key $(DAGSHUB_TOKEN)
+	@echo "DVC remote configured successfully!"
+	@echo "Repository: $(DAGSHUB_REPO)"
+	@echo "Endpoint: https://dagshub.com/$(DAGSHUB_REPO).s3"
+
+dvc-status: ## Check DVC status
+	@echo "Checking DVC status..."
+	$(DVC) status
+
+dvc-push: ## Push data to DVC remote
+	@echo "Pushing data to DVC remote..."
+	$(DVC) push
+
+dvc-pull: ## Pull data from DVC remote
+	@echo "Pulling data from DVC remote..."
+	$(DVC) pull
+
+dvc-repro: ## Reproduce DVC pipeline
+	@echo "Pulling data from DVC remote (if available)..."
+	@$(DVC) pull || echo "Warning: Some files not found in remote, will regenerate..."
+	@echo "Reproducing DVC pipeline..."
+	@$(DVC) repro

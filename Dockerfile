@@ -59,7 +59,7 @@ CMD ["bash"]
 # =========================
 FROM dev AS train
 ENTRYPOINT ["make"]
-CMD ["workflow-ml"]
+CMD ["run-train"]
 
 # =========================
 # Production stage
