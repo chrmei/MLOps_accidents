@@ -123,10 +123,6 @@ run-train-grid: ## Train multiple models with grid search for hyperparameter tun
 	@echo "Training multiple models with grid search (this may take a while)..."
 	$(PYTHON) src/models/train_multi_model.py --grid-search
 
-run-train-single: ## Train single XGBoost model (legacy - use run-train for multi-model)
-	@echo "Training single XGBoost model (legacy mode)..."
-	$(PYTHON) src/models/train_model.py
-
 run-predict: ## Make predictions using default JSON file (src/models/test_features.json) - uses local model (development mode)
 	@echo "Making predictions from default JSON file (local model)..."
 	$(PYTHON) src/models/predict_model.py
