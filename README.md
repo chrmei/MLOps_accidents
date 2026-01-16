@@ -412,7 +412,6 @@ MLOps_accidents/
 │   ├── models/                # Scripts to train models and make predictions
 │   │   ├── __init__.py
 │   │   ├── predict_model.py   # Model inference script
-│   │   ├── train_model.py     # Single model training script (legacy)
 │   │   ├── train_multi_model.py # Multi-model training framework
 │   │   └── test_features.json # Example features for testing
 │   └── visualization/         # Scripts to create visualizations

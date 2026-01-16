@@ -191,10 +191,5 @@ Models are sorted by F1 score (descending).
 
 ## Integration with Existing Code
 
-The framework is designed to work alongside the existing `train_model.py`:
-
-- **Single model training**: Use `train_model.py` (backward compatible)
-- **Multi-model training**: Use `train_multi_model.py` (new framework)
-
-Both use the same configuration file and MLflow setup.
+The framework uses `train_multi_model.py` for all model training. It supports training multiple models and comparing their performance, using the same configuration file and MLflow setup.
 
