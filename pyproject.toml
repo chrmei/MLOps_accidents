@@ -40,6 +40,7 @@ dependencies = [
     "dvc[s3]>=3.42.0",
     "boto3",
     "lightgbm",
+    "pandera[pandas]>=0.28.1",
 ]
 
 [project.optional-dependencies]
