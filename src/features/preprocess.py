@@ -20,6 +20,7 @@ def preprocess_for_inference(
     label_encoders: Optional[Dict] = None,
     apply_cyclic_encoding: bool = True,
     apply_interactions: bool = True,
+    model_type: Optional[str] = None,
 ) -> pd.DataFrame:
     """
     Preprocess input features for model inference.
@@ -37,6 +38,8 @@ def preprocess_for_inference(
         Whether to apply cyclic encoding (must match training)
     apply_interactions : bool
         Whether to create interaction features (must match training)
+    model_type : str, optional
+        Model type (e.g., "XGBoost", "LightGBM", "RandomForest") for logging purposes.
         
     Returns
     -------
@@ -52,6 +55,7 @@ def preprocess_for_inference(
         apply_cyclic_encoding=apply_cyclic_encoding,
         apply_interactions=apply_interactions,
         label_encoders=label_encoders,
+        model_type=model_type,
     )
     
     return df_features

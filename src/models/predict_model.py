@@ -691,11 +691,30 @@ def predict(
 
     # Preprocess features
     logger.info("Preprocessing input features...")
+    # Format model_type for display (e.g., "lightgbm" -> "LightGBM", "xgboost" -> "XGBoost")
+    if model_type:
+        # Handle common model type names
+        model_type_lower = model_type.lower()
+        model_type_map = {
+            "lightgbm": "LightGBM",
+            "xgboost": "XGBoost",
+            "random_forest": "RandomForest",
+            "randomforest": "RandomForest",
+            "logistic_regression": "LogisticRegression",
+            "logisticregression": "LogisticRegression",
+        }
+        model_type_display = model_type_map.get(model_type_lower)
+        if not model_type_display:
+            # Fallback: capitalize first letter of each word
+            model_type_display = model_type.replace("_", " ").title().replace(" ", "")
+    else:
+        model_type_display = None
     df_features = preprocess_for_inference(
         features,
         label_encoders=label_encoders,
         apply_cyclic_encoding=apply_cyclic_encoding,
         apply_interactions=apply_interactions,
+        model_type=model_type_display,
     )
 
     # Get expected features from model

@@ -736,32 +736,51 @@ class EnhancedModelRegistry:
         
         # Perform promotion
         try:
-            # Get current version with target alias (if exists) for potential rollback
-            # Convert stage name to lowercase alias (e.g., "Production" -> "production")
-            target_alias = target_stage.lower()
+            # Get current version with target stage (if exists) for potential rollback
             previous_prod_version = None
             try:
-                previous_prod_mv = self.client.get_model_version_by_alias(model_name, target_alias)
-                previous_prod_version = previous_prod_mv.version
+                # Search for versions in the target stage
+                all_versions = self.client.search_model_versions(f"name='{model_name}'")
+                for mv in all_versions:
+                    if mv.current_stage == target_stage:
+                        previous_prod_version = mv.version
+                        break
             except Exception:
-                # No existing version with this alias
+                # No existing version in this stage
                 pass
             
-            # Set alias for candidate version (replaces deprecated stage transition)
-            self.client.set_registered_model_alias(
+            # Transition stage (this is the method that shows up in MLflow UI)
+            # Note: transition_model_version_stage is deprecated but still functional
+            # and is required for stage visibility in MLflow UI (including DagsHub)
+            self.client.transition_model_version_stage(
                 name=model_name,
-                alias=target_alias,
-                version=str(candidate_version)
+                version=str(candidate_version),
+                stage=target_stage,
+                archive_existing_versions=False  # Don't auto-archive other versions
             )
             
-            # Remove alias from previous version if exists (replaces archiving)
-            if previous_prod_version:
+            # Also set alias for modern MLflow compatibility
+            target_alias = target_stage.lower()
+            try:
+                self.client.set_registered_model_alias(
+                    name=model_name,
+                    alias=target_alias,
+                    version=str(candidate_version)
+                )
+            except Exception as e:
+                logger.debug(f"Could not set alias (non-critical): {e}")
+            
+            # Archive previous version if it was in the same stage
+            if previous_prod_version and str(previous_prod_version) != str(candidate_version):
                 try:
-                    # Delete the alias from the previous version
-                    self.client.delete_registered_model_alias(model_name, target_alias)
+                    self.client.transition_model_version_stage(
+                        name=model_name,
+                        version=str(previous_prod_version),
+                        stage="Archived"
+                    )
                     result["previous_version_archived"] = previous_prod_version
                 except Exception as e:
-                    logger.warning(f"Could not remove alias from previous version: {e}")
+                    logger.warning(f"Could not archive previous version: {e}")
             
             result["promoted"] = True
             result["reason"] = "Promotion successful"
@@ -782,18 +801,42 @@ class EnhancedModelRegistry:
     def _log_promotion_event(self, promotion_result: Dict):
         """Log promotion event to MLflow."""
         try:
-            with mlflow.start_run(run_name=f"promotion_{promotion_result['model_name']}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"):
-                mlflow.set_tag("event_type", "model_promotion")
-                mlflow.set_tag("model_name", promotion_result["model_name"])
+            # Check if there's an active run - if so, log to it instead of creating a new one
+            active_run = mlflow.active_run()
+            
+            if active_run:
+                # Log promotion info as tags to the current active run
+                mlflow.set_tag("promotion_event", "true")
                 mlflow.set_tag("promoted_version", str(promotion_result["candidate_version"]))
-                mlflow.set_tag("target_stage", promotion_result["target_stage"])
+                mlflow.set_tag("promotion_target_stage", promotion_result["target_stage"])
+                mlflow.set_tag("promotion_status", "success" if promotion_result.get("promoted") else "failed")
                 
-                # Log promotion details as JSON
+                # Log promotion details as JSON artifact
                 json_path = tempfile.mktemp(suffix=".json")
-                with open(json_path, "w") as f:
-                    json.dump(promotion_result, f, indent=2, default=str)
-                mlflow.log_artifact(json_path, "promotion")
-                os.remove(json_path)
+                try:
+                    with open(json_path, "w") as f:
+                        json.dump(promotion_result, f, indent=2, default=str)
+                    mlflow.log_artifact(json_path, "promotion")
+                finally:
+                    if os.path.exists(json_path):
+                        os.remove(json_path)
+            else:
+                # No active run, create a new one
+                with mlflow.start_run(run_name=f"promotion_{promotion_result['model_name']}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"):
+                    mlflow.set_tag("event_type", "model_promotion")
+                    mlflow.set_tag("model_name", promotion_result["model_name"])
+                    mlflow.set_tag("promoted_version", str(promotion_result["candidate_version"]))
+                    mlflow.set_tag("target_stage", promotion_result["target_stage"])
+                    
+                    # Log promotion details as JSON
+                    json_path = tempfile.mktemp(suffix=".json")
+                    try:
+                        with open(json_path, "w") as f:
+                            json.dump(promotion_result, f, indent=2, default=str)
+                        mlflow.log_artifact(json_path, "promotion")
+                    finally:
+                        if os.path.exists(json_path):
+                            os.remove(json_path)
         except Exception as e:
             logger.warning(f"Could not log promotion event: {e}")
     

@@ -471,7 +471,7 @@ def prepare_input_for_feature_engineering(
 
 
 def build_features(
-    df_interim, apply_cyclic_encoding=True, apply_interactions=True, label_encoders=None
+    df_interim, apply_cyclic_encoding=True, apply_interactions=True, label_encoders=None, model_type=None
 ):
     """
     Main function to build all features from interim dataset for XGBoost.
@@ -486,6 +486,9 @@ def build_features(
         Whether to create interaction features
     label_encoders : dict, optional
         Pre-fitted label encoders for inference. If None, fits new encoders.
+    model_type : str, optional
+        Model type (e.g., "XGBoost", "LightGBM", "RandomForest") for logging purposes.
+        If None, the log message will not mention a specific model type.
 
     Returns
     -------
@@ -494,7 +497,10 @@ def build_features(
     dict
         Dictionary of label encoders for categorical features
     """
-    logger.info("Starting feature engineering for XGBoost")
+    if model_type:
+        logger.info(f"Starting feature engineering for {model_type}")
+    else:
+        logger.info("Starting feature engineering")
     df = df_interim.copy()
 
     # Temporal features

@@ -170,7 +170,7 @@ Set up orchestration for microservices using Docker Compose (or Kubernetes if sc
 - Documentation for local development setup
 - Service dependency ordering (data → training → api)
 
-#### MRA2-34: Enhanced DVC Data Versioning
+Enhanced DVC Data Versioning
 
 - **Type**: Task
 - **Assignee**: Engineer A
