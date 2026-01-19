@@ -94,3 +94,4 @@ target/
 *.joblib
 
 doc/papers/*
+.venv

@@ -1,4 +1,4 @@
-.PHONY: help install install-dev sync lock update clean lint format type-check test test-cov run-import run-preprocess run-features run-train run-train-grid run-predict run-predict-file workflow-all workflow-data workflow-ml dvc-init dvc-setup-remote dvc-status dvc-push dvc-pull dvc-repro docker-build docker-build-dev docker-build-prod docker-build-train docker-run-dev docker-run-prod docker-run-train docker-run-predict docker-run-predict-mlflow docker-run-predict-best docker-dvc-pull docker-clean
+.PHONY: help install install-dev sync lock update clean lint format type-check test test-cov run-import run-preprocess run-features run-train run-train-grid run-predict run-predict-file workflow-all workflow-data workflow-ml dvc-init dvc-setup-remote dvc-status dvc-push dvc-pull dvc-repro docker-up docker-down docker-build-services docker-logs docker-status docker-health docker-restart docker-dev docker-build docker-build-dev docker-build-train docker-dvc-pull docker-clean
 
 # Load .env file if it exists (cross-platform with GNU Make)
 # Note: On Windows, use Git Bash, WSL, or another Unix-like environment
@@ -216,90 +216,87 @@ dvc-repro: ## Reproduce DVC pipeline
 	@echo "Reproducing DVC pipeline..."
 	@$(DVC) repro
 
-# Docker commands
-docker-build: ## Build all Docker images (dev, prod, train)
-	@echo "Building all Docker images..."
-	docker build -t mlops-accidents:dev --target dev .
-# docker build -t mlops-accidents:prod --target prod .
-	docker build -t mlops-accidents:train --target train .
-	@echo "All Docker images built successfully!"
+# =============================================================================
+# Microservices Docker commands
+# =============================================================================
 
-docker-build-dev: ## Build development Docker image
+docker-up: ## Start all microservices (nginx, data, train, predict)
+	@echo "Starting microservices..."
+	docker compose up -d nginx data train predict
+	@echo "Services started! API available at http://localhost"
+
+docker-down: ## Stop all microservices
+	@echo "Stopping microservices..."
+	docker compose down
+	@echo "Services stopped."
+
+docker-build-services: ## Build all microservice images
+	@echo "Building microservice images..."
+	docker compose build nginx data train predict
+	@echo "All microservice images built!"
+
+docker-logs: ## Show logs from all services (follow mode)
+	docker compose logs -f
+
+docker-logs-nginx: ## Show nginx logs
+	docker compose logs -f nginx
+
+docker-logs-data: ## Show data service logs
+	docker compose logs -f data
+
+docker-logs-train: ## Show train service logs
+	docker compose logs -f train
+
+docker-logs-predict: ## Show predict service logs
+	docker compose logs -f predict
+
+docker-status: ## Show status of all services
+	docker compose ps
+
+docker-health: ## Check health of all services via API
+	@echo "Checking service health..."
+	@echo "--- Nginx Gateway ---"
+	@curl -sf http://localhost/health 2>/dev/null && echo "" || echo "  Not responding"
+	@echo "--- Data Service ---"
+	@curl -sf http://localhost/api/v1/data/health 2>/dev/null && echo "" || echo "  Not responding (service may not be implemented yet)"
+	@echo "--- Train Service ---"
+	@curl -sf http://localhost/api/v1/train/health 2>/dev/null && echo "" || echo "  Not responding (service may not be implemented yet)"
+	@echo "--- Predict Service ---"
+	@curl -sf http://localhost/api/v1/predict/health 2>/dev/null && echo "" || echo "  Not responding (service may not be implemented yet)"
+
+docker-restart: ## Restart all microservices
+	@echo "Restarting microservices..."
+	docker compose restart nginx data train predict
+
+docker-dev: ## Start development shell container (interactive)
+	@echo "Starting development container..."
+	docker compose --profile dev run --rm dev
+
+# =============================================================================
+# Legacy Docker commands (standalone containers)
+# =============================================================================
+
+docker-build: ## Build legacy Docker images (dev, train)
+	@echo "Building legacy Docker images..."
+	docker build -t mlops-accidents:dev --target dev .
+	docker build -t mlops-accidents:train --target train .
+	@echo "Legacy Docker images built!"
+
+docker-build-dev: ## Build development Docker image (standalone)
 	@echo "Building development Docker image..."
 	docker build -t mlops-accidents:dev --target dev .
 
-# docker-build-prod: ## Build production Docker image
-# 	@echo "Building production Docker image..."
-# 	docker build -t mlops-accidents:prod --target prod .
-
-docker-build-train: ## Build training Docker image
+docker-build-train: ## Build training Docker image (standalone)
 	@echo "Building training Docker image..."
 	docker build -t mlops-accidents:train --target train .
 
-docker-run-dev: ## Run development container with interactive bash shell
-	@echo "Starting development container (interactive)..."
-	docker run -it --rm -v $(PWD):/app mlops-accidents:dev
-
-docker-run-dev-detached: ## Run development container in background (detached mode)
-	@echo "Starting development container (detached)..."
-	docker run -d --rm -v $(PWD):/app --name mlops-dev mlops-accidents:dev tail -f /dev/null
-	@echo "Container 'mlops-dev' is running. Attach with: docker exec -it mlops-dev bash"
-	@echo "Stop with: docker stop mlops-dev"
-
-docker-run-dev-exec: ## Run command in dev container (usage: make docker-run-dev-exec CMD="python script.py")
-	@if [ -z "$(CMD)" ]; then \
-		echo "Error: CMD variable is required. Usage: make docker-run-dev-exec CMD=\"your command\""; \
-		exit 1; \
-	fi
-	@echo "Running command in container: $(CMD)"
-	docker run --rm -v $(PWD):/app mlops-accidents:dev bash -c "$(CMD)"
-
-# docker-run-prod: ## Run production inference container
-# 	@echo "Starting production container..."
-# 	docker run -it --rm -v $(PWD)/models:/app/models -v $(PWD)/data:/app/data mlops-accidents:prod
-
-docker-run-train: ## Run training pipeline in container (non-interactive)
-	@echo "Starting training container..."
-	docker run --rm -v $(PWD):/app mlops-accidents:train
-
-docker-run-train-interactive: ## Run training container with interactive shell
-	@echo "Starting training container (interactive)..."
-	docker run -it --rm -v $(PWD):/app mlops-accidents:train bash
-
-docker-run-predict: ## Run prediction in Docker container (usage: make docker-run-predict [ARGS="--use-best-model"])
-	@echo "Running prediction in Docker container..."
-	@if [ -z "$(ARGS)" ]; then \
-		docker run --rm -v $(PWD):/app \
-			-e DAGSHUB_REPO=$(DAGSHUB_REPO) \
-			-e MLFLOW_TRACKING_URI=$(MLFLOW_TRACKING_URI) \
-			-e USE_BEST_MODEL=$(USE_BEST_MODEL) \
-			-e USE_MLFLOW_PRODUCTION=$(USE_MLFLOW_PRODUCTION) \
-			mlops-accidents:dev \
-			python src/models/predict_model.py --use-best-model; \
-	else \
-		docker run --rm -v $(PWD):/app \
-			-e DAGSHUB_REPO=$(DAGSHUB_REPO) \
-			-e MLFLOW_TRACKING_URI=$(MLFLOW_TRACKING_URI) \
-			-e USE_BEST_MODEL=$(USE_BEST_MODEL) \
-			-e USE_MLFLOW_PRODUCTION=$(USE_MLFLOW_PRODUCTION) \
-			mlops-accidents:dev \
-			python src/models/predict_model.py $(ARGS); \
-	fi
-
-docker-run-predict-mlflow: ## Run prediction using MLflow Production model in Docker
-	@echo "Running prediction with MLflow Production model..."
-	@make docker-run-predict ARGS="--use-mlflow-production"
-
-docker-run-predict-best: ## Run prediction using best Production model in Docker
-	@echo "Running prediction with best Production model..."
-	@make docker-run-predict ARGS="--use-best-model"
-
 docker-dvc-pull: ## Pull data/models from DVC remote using Docker Compose
 	@echo "Pulling data/models from DVC remote via Docker..."
-	docker compose --profile dvc up dvc-pull
+	docker compose --profile dvc run --rm dvc-pull
 
-# update mlops-accidents:prod if prod target is uncommented in Dockerfile
-docker-clean: ## Remove all Docker images and containers
-	@echo "Cleaning up Docker images..."
+docker-clean: ## Remove all Docker containers, images, and volumes
+	@echo "Stopping and removing containers..."
+	docker compose down --rmi local --volumes 2>/dev/null || true
+	@echo "Removing legacy images..."
 	docker rmi mlops-accidents:dev mlops-accidents:train 2>/dev/null || true
 	@echo "Cleanup complete!"
