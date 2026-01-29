@@ -19,7 +19,7 @@ class Settings(BaseSettings):
     # ==========================================================================
     JWT_SECRET_KEY: str = "CHANGE_ME_IN_PRODUCTION_USE_STRONG_SECRET_KEY"
     JWT_ALGORITHM: str = "HS256"
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 600  # 10 hours
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
 
     # ==========================================================================
@@ -74,8 +74,8 @@ class Settings(BaseSettings):
     # Initial Admin User
     # ==========================================================================
     ADMIN_USERNAME: str = "admin"
-    ADMIN_PASSWORD: str = "CHANGE_ME_ADMIN_PASSWORD"
-    ADMIN_EMAIL: str = "admin@mlops.local"
+    ADMIN_PASSWORD: str = "Mlops@Admin2024!Secure"
+    ADMIN_EMAIL: str = "admin@example.com"
 
     class Config:
         """Pydantic settings configuration."""

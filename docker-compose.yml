@@ -69,13 +69,14 @@ services:
       - DATA_DIR=/app/data
       - MODELS_DIR=/app/models
       - PYTHONUNBUFFERED=1
+      - PYTHONWARNINGS=ignore
     volumes:
       - ./data:/app/data
       - ./models:/app/models
       - ./src:/app/src:ro
       - ~/.dvc:/home/mlops/.dvc:ro
-    expose:
-      - "8001"
+    ports:
+      - "8001:8001"
     networks:
       - mlops-network
     restart: unless-stopped
@@ -106,13 +107,14 @@ services:
       - DATA_DIR=/app/data
       - MODELS_DIR=/app/models
       - PYTHONUNBUFFERED=1
+      - PYTHONWARNINGS=ignore
     volumes:
       - ./data:/app/data
       - ./models:/app/models
       - ./src:/app/src:ro
       - ~/.dvc:/home/mlops/.dvc:ro
-    expose:
-      - "8002"
+    ports:
+      - "8002:8002"
     networks:
       - mlops-network
     restart: unless-stopped
@@ -148,12 +150,13 @@ services:
       - DATA_DIR=/app/data
       - MODELS_DIR=/app/models
       - PYTHONUNBUFFERED=1
+      - PYTHONWARNINGS=ignore
     volumes:
       - ./data:/app/data:ro
       - ./models:/app/models:ro
       - ./src:/app/src:ro
-    expose:
-      - "8003"
+    ports:
+      - "8003:8003"
     networks:
       - mlops-network
     restart: unless-stopped

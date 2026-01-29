@@ -19,6 +19,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     git \
+    libgomp1 \
     && rm -rf /var/lib/apt/lists/*
 
 # Create non-root user
