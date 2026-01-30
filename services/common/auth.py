@@ -306,6 +306,10 @@ async def get_current_user(
     """
     FastAPI dependency to get the current authenticated user.
 
+    Validates JWT token and returns User. If user doesn't exist in local database,
+    creates a User object from token data (for microservices where user data
+    is only stored in auth service).
+
     Args:
         credentials: Bearer token from request header
 
@@ -313,27 +317,36 @@ async def get_current_user(
         Current authenticated User
 
     Raises:
-        HTTPException: If token is invalid or user not found
+        HTTPException: If token is invalid
     """
     token_data = verify_token(credentials.credentials)
 
+    # Try to get user from local database first
     user = get_user(token_data.username)
-    if user is None:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="User not found",
-            headers={"WWW-Authenticate": "Bearer"},
+    if user is not None:
+        # User exists locally, return full user data
+        return User(
+            id=user.id,
+            username=user.username,
+            email=user.email,
+            full_name=user.full_name,
+            role=user.role,
+            is_active=user.is_active,
+            created_at=user.created_at,
+            updated_at=user.updated_at,
         )
-
+    
+    # User doesn't exist locally (created in auth service, not synced here)
+    # Create User from token data - token is already validated, so we trust it
     return User(
-        id=user.id,
-        username=user.username,
-        email=user.email,
-        full_name=user.full_name,
-        role=user.role,
-        is_active=user.is_active,
-        created_at=user.created_at,
-        updated_at=user.updated_at,
+        id=0,  # Placeholder ID - not used for authorization
+        username=token_data.username,
+        email=None,  # Not in token
+        full_name=None,  # Not in token
+        role=token_data.role,
+        is_active=True,  # Assume active if token is valid
+        created_at=datetime.utcnow(),  # Placeholder
+        updated_at=None,
     )
 
 

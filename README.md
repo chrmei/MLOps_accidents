@@ -92,12 +92,17 @@ docker run --rm -v $(PWD):/app mlops-accidents:train
 
 ### Docker Compose Services
 
-The `docker-compose.yml` defines three services:
+The `docker-compose.yml` defines several services:
 
 | Service | Purpose | Usage |
 |---------|---------|-------|
+| **`nginx`** | Reverse proxy / API Gateway | Routes requests to microservices (port 80) |
+| **`auth`** | Authentication service | User management and JWT authentication (port 8004) |
+| **`data`** | Data preprocessing service | Data preprocessing and feature engineering (port 8001) |
+| **`train`** | Model training service | Model training and MLflow integration (port 8002) |
+| **`predict`** | Prediction service | Model inference API (port 8003) |
+| **`test`** | API endpoint test service | Runs comprehensive API tests (profile: test) |
 | **`dev`** | Development environment | Interactive shell for development and testing |
-| **`train`** | Training pipeline | Runs complete ML training workflow |
 | **`dvc-pull`** | Data sync | Pulls data from DVC remote (optional profile) |
 
 ### Running the Pipeline in Docker
@@ -240,7 +245,9 @@ make run-predict     # Step 5: Make predictions
 - 🚧 **Data validation**: Pandera or manual schema validation pending
 
 **API & CI/CD (Engineer C):**
-- 🚧 **FastAPI service**: Basic inference API pending
+- ✅ **Microservices Architecture**: Auth, Data, Train, Predict services implemented
+- ✅ **API Endpoint Test Suite**: Comprehensive test suite for all microservices
+- ✅ **Test Service Docker Container**: Dockerized test service for CI/CD integration
 - 🚧 **CI/CD pipeline**: GitHub Actions workflows pending
 
 ### 📝 Planned
@@ -420,10 +427,16 @@ MLOps_accidents/
 ├── scripts/                   # Utility scripts
 │   ├── manage_model_registry.py # MLflow model registry management
 │   └── setup_dvc_remote.sh
-├── tests/                     # Pytest suite (to be implemented)
-│   ├── test_data.py
-│   ├── test_models.py
-│   └── test_api.py
+├── tests/                     # Pytest suite for API endpoint testing
+│   ├── __init__.py
+│   ├── conftest.py           # Shared fixtures and configuration
+│   ├── test_auth_service.py  # Auth service endpoint tests
+│   ├── test_data_service.py  # Data service endpoint tests
+│   ├── test_train_service.py # Train service endpoint tests
+│   ├── test_predict_service.py # Predict service endpoint tests
+│   ├── README.md             # Test suite documentation
+│   ├── TEST_SERVICE.md        # Docker test service usage guide
+│   └── run_tests.sh          # Convenience script for running tests
 ├── Dockerfile                 # Multi-stage Dockerfile
 ├── docker-compose.yml         # Docker Compose configuration
 ├── dvc.yaml                   # DVC pipeline definition
@@ -451,6 +464,84 @@ MLOps_accidents/
 | **Dependency Management** | **UV** | Fast Python package installer and resolver |
 | **Build System** | **setuptools** | Package building and distribution |
 
+## 🧪 API Endpoint Testing
+
+The project includes a comprehensive test suite for all microservices API endpoints. Tests cover successful requests, error handling, authentication, and authorization.
+
+### Quick Start
+
+**Run all tests in Docker (recommended):**
+```bash
+# Start services and run all API tests
+make docker-test
+
+# Or using Docker Compose directly
+docker compose --profile test run --rm test
+```
+
+**Run tests locally (requires services running):**
+```bash
+# Set BASE_URL if services are not on localhost
+export BASE_URL=http://localhost
+
+# Run all API tests
+make test-api
+
+# Run with coverage
+make test-api-cov
+
+# Run tests for specific service
+make test-api-auth      # Auth service only
+make test-api-data      # Data service only
+make test-api-train     # Train service only
+make test-api-predict   # Predict service only
+```
+
+### Docker Compose Usage
+
+The test service runs as a Docker container that can execute tests against all microservices:
+
+```bash
+# Run all tests
+docker compose --profile test run --rm test
+
+# Run specific test file
+docker compose --profile test run --rm test pytest tests/test_auth_service.py -v
+
+# Run tests with coverage
+docker compose --profile test run --rm test pytest tests/ -v --cov=services --cov-report=html
+
+# Run with custom BASE_URL
+docker compose --profile test run --rm -e BASE_URL=http://192.168.1.100 test
+
+# Interactive shell in test container
+docker compose --profile test run --rm test bash
+```
+
+### Test Coverage
+
+The test suite covers:
+- ✅ **Auth Service**: Login, token refresh, user management, authorization
+- ✅ **Data Service**: Preprocessing jobs, feature engineering, job status, listing
+- ✅ **Train Service**: Training jobs, job status, metrics retrieval
+- ✅ **Predict Service**: Single/batch predictions, model listing
+
+### Configuration
+
+Tests can be configured via environment variables:
+
+```bash
+export BASE_URL=http://localhost          # Base URL for API endpoints
+export ADMIN_USERNAME=admin              # Admin username
+export ADMIN_PASSWORD=your_password      # Admin password
+export TEST_USER_USERNAME=testuser       # Test user username
+export TEST_USER_PASSWORD=TestUser@123   # Test user password
+```
+
+For detailed documentation, see:
+- [Test Suite README](tests/README.md) - Complete test documentation
+- [Test Service Guide](tests/TEST_SERVICE.md) - Docker test service usage
+
 ## 🛠️ Development Commands
 
 Run `make help` to see all commands. Key commands:
@@ -468,6 +559,17 @@ Run `make help` to see all commands. Key commands:
 **Testing**
 - `make test` - Run pytest
 - `make test-cov` - Run with coverage report
+- `make test-api` - Run API endpoint tests (requires services running)
+- `make test-api-cov` - Run API tests with coverage
+- `make test-api-auth` - Run auth service tests only
+- `make test-api-data` - Run data service tests only
+- `make test-api-train` - Run train service tests only
+- `make test-api-predict` - Run predict service tests only
+- `make docker-test` - Run all API tests in Docker (auto-starts services)
+- `make docker-test-build` - Build test service Docker image
+- `make docker-test-run CMD="..."` - Run custom test command in Docker
+- `make docker-test-cov` - Run API tests with coverage in Docker
+- `make docker-test-service SERVICE=auth` - Run tests for specific service
 
 **Data Pipeline**
 - `make run-import` - Import raw data
@@ -480,6 +582,10 @@ Run `make help` to see all commands. Key commands:
 **Docker**
 - `make docker-build-dev` - Build development image
 - `make docker-build-train` - Build training image
+- `make docker-build-services` - Build all microservice images
+- `make docker-up` - Start all microservices
+- `make docker-down` - Stop all microservices
+- `make docker-health` - Check health of all services
 - `make docker-run-dev` - Run dev container (interactive)
 - `make docker-run-train` - Run training pipeline
 - `make docker-run-dev-exec CMD="..."` - Run one-off command

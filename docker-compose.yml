@@ -7,6 +7,7 @@
 #   - data:    Data preprocessing service (port 8001)
 #   - train:   Model training service (port 8002)
 #   - predict: Prediction service (port 8003)
+#   - test:    API endpoint test service (profile: test)
 #
 # Development:
 #   - dev:     Development shell
@@ -197,6 +198,38 @@ services:
       timeout: 10s
       retries: 3
       start_period: 30s
+
+  # ===========================================================================
+  # Test Service - API Endpoint Testing
+  # ===========================================================================
+  test:
+    build:
+      context: .
+      dockerfile: ./services/test_service/Dockerfile
+    container_name: mlops-test-service
+    environment:
+      - PYTHONUNBUFFERED=1
+      - BASE_URL=http://nginx:80
+      - ADMIN_USERNAME=${ADMIN_USERNAME:-admin}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD:-CHANGE_ME_ADMIN_PASSWORD}
+      - TEST_USER_USERNAME=${TEST_USER_USERNAME:-testuser}
+      - TEST_USER_PASSWORD=${TEST_USER_PASSWORD:-TestUser@123}
+      - PYTHONPATH=/app
+    networks:
+      - mlops-network
+    depends_on:
+      auth:
+        condition: service_healthy
+      data:
+        condition: service_healthy
+      train:
+        condition: service_healthy
+      predict:
+        condition: service_healthy
+    profiles:
+      - test
+    # Override command via docker-compose run or environment
+    # Example: docker compose --profile test run --rm test pytest tests/test_auth_service.py -v
 
   # ===========================================================================
   # Development Environment
