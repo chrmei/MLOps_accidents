@@ -21,6 +21,62 @@ except ImportError:
 # Note: train_test_split moved to model training pipeline
 # Interim dataset is saved instead of train/test split
 
+# File name patterns used to discover raw CSVs (any file whose name contains
+# the pattern is considered; first match when sorted is used).
+RAW_FILE_PATTERNS = {
+    "usagers": "usagers",
+    "caracteristiques": "caracteristiques",
+    "lieux": "lieux",
+    "vehicules": "vehicules",
+}
+
+
+def discover_raw_file_paths(raw_dir: str):
+    """
+    Discover raw CSV file paths by pattern in a directory.
+
+    Looks for one CSV per category (usagers, caracteristiques, lieux, vehicules).
+    Any file whose name contains the pattern is accepted (e.g. usagers-2021.csv,
+    usagers-2022.csv). If multiple files match, the first when sorted is used.
+
+    Args:
+        raw_dir: Directory containing raw CSV files.
+
+    Returns:
+        Tuple (users_path, caract_path, places_path, veh_path).
+
+    Raises:
+        FileNotFoundError: If the directory does not exist or a category has
+            no matching CSV file.
+    """
+    if not os.path.isdir(raw_dir):
+        raise FileNotFoundError(f"Raw data directory does not exist: {raw_dir}")
+
+    try:
+        entries = os.listdir(raw_dir)
+    except OSError as e:
+        raise FileNotFoundError(f"Cannot list raw data directory {raw_dir}: {e}") from e
+
+    csv_files = [f for f in entries if os.path.isfile(os.path.join(raw_dir, f)) and f.lower().endswith(".csv")]
+    paths = {}
+
+    for key, pattern in RAW_FILE_PATTERNS.items():
+        matches = sorted(f for f in csv_files if pattern in f.lower())
+        if not matches:
+            available = ", ".join(csv_files) if csv_files else "(none)"
+            raise FileNotFoundError(
+                f"No CSV file matching '{pattern}' found in {raw_dir}. "
+                f"Available files: {available}"
+            )
+        paths[key] = os.path.join(raw_dir, matches[0])
+
+    return (
+        paths["usagers"],
+        paths["caracteristiques"],
+        paths["lieux"],
+        paths["vehicules"],
+    )
+
 
 @click.command()
 @click.argument(
@@ -55,10 +111,16 @@ def main(input_filepath, output_filepath):
         logger.info("Please run 'make run-import' first to download raw data")
         raise click.Abort()
 
-    input_filepath_users = os.path.join(input_filepath, "usagers-2021.csv")
-    input_filepath_caract = os.path.join(input_filepath, "caracteristiques-2021.csv")
-    input_filepath_places = os.path.join(input_filepath, "lieux-2021.csv")
-    input_filepath_veh = os.path.join(input_filepath, "vehicules-2021.csv")
+    input_filepath_users, input_filepath_caract, input_filepath_places, input_filepath_veh = (
+        discover_raw_file_paths(input_filepath)
+    )
+    logger.info(
+        "Discovered raw files: usagers=%s, caract=%s, lieux=%s, vehicules=%s",
+        input_filepath_users,
+        input_filepath_caract,
+        input_filepath_places,
+        input_filepath_veh,
+    )
 
     if not output_filepath:
         output_filepath = click.prompt(

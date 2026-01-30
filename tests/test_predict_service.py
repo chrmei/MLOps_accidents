@@ -61,24 +61,20 @@ class TestPredictService:
             assert "model_type" in data
 
     @pytest.mark.asyncio
-    async def test_single_prediction_with_model_type(
+    async def test_single_prediction_returns_model_type(
         self,
         http_client: AsyncClient,
         predict_base_url: str,
         user_headers: dict,
         sample_prediction_features: dict,
     ):
-        """Test making a prediction with specific model type."""
-        request_data = {
-            "features": sample_prediction_features,
-            "model_type": "logistic_regression",
-        }
+        """Test that prediction response includes the loaded model type (from MLflow Production)."""
+        request_data = {"features": sample_prediction_features}
         response = await http_client.post(
             f"{predict_base_url}/",
             json=request_data,
             headers=user_headers,
         )
-        # Accept both success and potential errors (if model not available)
         assert response.status_code in [200, 500, 503]
         if response.status_code == 200:
             data = response.json()
@@ -182,29 +178,26 @@ class TestPredictService:
             assert data["count"] == len(sample_batch_features)
 
     @pytest.mark.asyncio
-    async def test_batch_prediction_with_model_type(
+    async def test_batch_prediction_returns_model_type(
         self,
         http_client: AsyncClient,
         predict_base_url: str,
         user_headers: dict,
         sample_batch_features: list,
     ):
-        """Test making batch predictions with specific model type."""
-        request_data = {
-            "features_list": sample_batch_features,
-            "model_type": "random_forest",
-        }
+        """Test that batch prediction response includes loaded model type (from MLflow Production)."""
+        request_data = {"features_list": sample_batch_features}
         response = await http_client.post(
             f"{predict_base_url}/batch",
             json=request_data,
             headers=user_headers,
         )
-        # Accept both success and potential errors (if model not available)
         assert response.status_code in [200, 500, 503]
         if response.status_code == 200:
             data = response.json()
             assert "predictions" in data
             assert "count" in data
+            assert "model_type" in data
 
     @pytest.mark.asyncio
     async def test_batch_prediction_empty_list(
@@ -264,17 +257,16 @@ class TestPredictService:
         predict_base_url: str,
         user_headers: dict,
     ):
-        """Test listing available models."""
+        """Test listing the currently loaded Production model (loaded at container start)."""
         response = await http_client.get(
             f"{predict_base_url}/models",
             headers=user_headers,
         )
         assert response.status_code == 200
         data = response.json()
-        assert "models" in data
-        assert isinstance(data["models"], list)
-        assert len(data["models"]) > 0
-        assert "default" in data
+        assert "loaded_model_type" in data
+        assert "source" in data
+        assert "MLflow" in data["source"] or "Production" in data["source"]
 
     @pytest.mark.asyncio
     async def test_list_models_unauthorized(

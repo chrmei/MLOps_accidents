@@ -1,8 +1,11 @@
 """
 Pydantic schemas for the predict service API.
+
+Predict service always uses the best Production model from MLflow,
+loaded once at container startup. No per-request model selection.
 """
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 from pydantic import BaseModel
 
@@ -11,7 +14,6 @@ class PredictionRequest(BaseModel):
     """Request payload for single prediction."""
 
     features: Dict[str, Any]
-    model_type: Optional[str] = None
 
 
 class PredictionResponse(BaseModel):
@@ -25,7 +27,6 @@ class BatchPredictionRequest(BaseModel):
     """Request payload for batch predictions."""
 
     features_list: List[Dict[str, Any]]
-    model_type: Optional[str] = None
 
 
 class BatchPredictionResponse(BaseModel):

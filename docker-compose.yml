@@ -59,8 +59,10 @@ services:
   data:
     build:
       context: .
-      dockerfile: ./services/data_service/Dockerfile
+      dockerfile: ./services/Dockerfile.python
+      target: data_service
     container_name: mlops-data-service
+    cpu_shares: 512
     environment:
       - SERVICE_NAME=data-service
       - DEBUG=${DEBUG:-false}
@@ -97,8 +99,10 @@ services:
   train:
     build:
       context: .
-      dockerfile: ./services/train_service/Dockerfile
+      dockerfile: ./services/Dockerfile.python
+      target: train_service
     container_name: mlops-train-service
+    cpu_shares: 512
     environment:
       - SERVICE_NAME=train-service
       - DEBUG=${DEBUG:-false}
@@ -135,7 +139,8 @@ services:
   auth:
     build:
       context: .
-      dockerfile: ./services/auth_service/Dockerfile
+      dockerfile: ./services/Dockerfile.python
+      target: auth_service
     container_name: mlops-auth-service
     environment:
       - SERVICE_NAME=auth-service
@@ -163,13 +168,17 @@ services:
       start_period: 30s
 
   # ===========================================================================
-  # Predict Service - Model Inference
+  # Predict Service - Model Inference (production-serving; must not be starved)
   # ===========================================================================
   predict:
     build:
       context: .
-      dockerfile: ./services/predict_service/Dockerfile
+      dockerfile: ./services/Dockerfile.python
+      target: predict_service
     container_name: mlops-predict-service
+    # Ensure predict stays responsive when data/train are busy (CPU/memory share)
+    cpu_shares: 1024
+    mem_reservation: 256M
     environment:
       - SERVICE_NAME=predict-service
       - DEBUG=${DEBUG:-false}
@@ -197,7 +206,7 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 30s
+      start_period: 60s
 
   # ===========================================================================
   # Test Service - API Endpoint Testing
@@ -205,7 +214,8 @@ services:
   test:
     build:
       context: .
-      dockerfile: ./services/test_service/Dockerfile
+      dockerfile: ./services/Dockerfile.python
+      target: test_service
     container_name: mlops-test-service
     environment:
       - PYTHONUNBUFFERED=1
@@ -215,6 +225,11 @@ services:
       - TEST_USER_USERNAME=${TEST_USER_USERNAME:-testuser}
       - TEST_USER_PASSWORD=${TEST_USER_PASSWORD:-TestUser@123}
       - PYTHONPATH=/app
+      - TEST_RAW_DIR=/app/data/test/raw
+      - NOCONFIRM=1
+    volumes:
+      - ./tests:/app/tests:ro
+      - ./data:/app/data
     networks:
       - mlops-network
     depends_on:

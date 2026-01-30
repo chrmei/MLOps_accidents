@@ -62,11 +62,12 @@ class TestDataService:
         http_client: AsyncClient,
         data_base_url: str,
         admin_headers: dict,
+        ensure_test_raw_data_session,
     ):
-        """Test starting preprocessing job with custom paths."""
+        """Test starting preprocessing job with custom paths (writable test dir in container)."""
         request_data = {
-            "raw_dir": "/custom/raw",
-            "preprocessed_dir": "/custom/preprocessed",
+            "raw_dir": "/app/data/test/raw",
+            "preprocessed_dir": "/app/data/test/preprocessed",
         }
         response = await http_client.post(
             f"{data_base_url}/preprocess",

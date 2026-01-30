@@ -9,7 +9,7 @@ import logging
 import os
 from typing import Dict
 
-from src.data.make_dataset import process_data
+from src.data.make_dataset import discover_raw_file_paths, process_data
 
 logger = logging.getLogger(__name__)
 
@@ -27,10 +27,7 @@ def preprocess_data(raw_dir: str, preprocessed_dir: str) -> Dict[str, str]:
     """
     os.makedirs(preprocessed_dir, exist_ok=True)
 
-    input_users = os.path.join(raw_dir, "usagers-2021.csv")
-    input_caract = os.path.join(raw_dir, "caracteristiques-2021.csv")
-    input_places = os.path.join(raw_dir, "lieux-2021.csv")
-    input_veh = os.path.join(raw_dir, "vehicules-2021.csv")
+    input_users, input_caract, input_places, input_veh = discover_raw_file_paths(raw_dir)
 
     logger.info(
         "Running preprocessing with inputs: %s, %s, %s, %s",

@@ -2,7 +2,9 @@
 FastAPI routes for the predict service.
 """
 
-from fastapi import APIRouter, Depends
+import asyncio
+
+from fastapi import APIRouter, Depends, Request
 
 from services.common.dependencies import AuthenticatedUser
 
@@ -16,22 +18,24 @@ from .schemas import (
 
 router = APIRouter(prefix="/api/v1/predict", tags=["predict"])
 
-# ============================================================================
-# Prediction Routes
-# ============================================================================
+
+def get_model_cache(request: Request):
+    """Dependency: cached model loaded at startup."""
+    return request.app.state.model_cache
 
 
 @router.post("/", response_model=PredictionResponse)
 async def single_prediction(
     request: PredictionRequest,
     current_user: AuthenticatedUser,
+    model_cache=Depends(get_model_cache),
 ):
-    """Make a single prediction (authenticated users)."""
-    result = make_prediction(
+    """Make a single prediction using the loaded Production model."""
+    result = await asyncio.to_thread(
+        make_prediction,
         features=request.features,
-        model_type=request.model_type,
+        model_cache=model_cache,
     )
-
     return PredictionResponse(
         prediction=result["prediction"],
         model_type=result["model_type"],
@@ -42,13 +46,14 @@ async def single_prediction(
 async def batch_prediction(
     request: BatchPredictionRequest,
     current_user: AuthenticatedUser,
+    model_cache=Depends(get_model_cache),
 ):
-    """Make batch predictions (authenticated users)."""
-    result = make_batch_prediction(
+    """Make batch predictions using the loaded Production model."""
+    result = await asyncio.to_thread(
+        make_batch_prediction,
         features_list=request.features_list,
-        model_type=request.model_type,
+        model_cache=model_cache,
     )
-
     return BatchPredictionResponse(
         predictions=result["predictions"],
         count=result["count"],
@@ -57,9 +62,12 @@ async def batch_prediction(
 
 
 @router.get("/models")
-async def list_available_models(current_user: AuthenticatedUser):
-    """List available models for prediction."""
+async def list_loaded_model(
+    current_user: AuthenticatedUser,
+    model_cache=Depends(get_model_cache),
+):
+    """Return the currently loaded Production model (loaded at container start)."""
     return {
-        "models": ["xgboost", "random_forest", "logistic_regression", "lightgbm"],
-        "default": "best_model",
+        "loaded_model_type": model_cache["model_type"],
+        "source": "MLflow Production (best by f1_score)",
     }

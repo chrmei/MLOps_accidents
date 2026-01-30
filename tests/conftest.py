@@ -204,7 +204,8 @@ async def http_client() -> AsyncGenerator[AsyncClient, None]:
     Yields:
         httpx.AsyncClient instance
     """
-    async with AsyncClient(timeout=30.0, follow_redirects=True) as client:
+    # 60s so predict (first-request model load) and other services are not starved under load
+    async with AsyncClient(timeout=60.0, follow_redirects=True) as client:
         yield client
 
 
@@ -400,6 +401,53 @@ def admin_headers(admin_token: str) -> dict:
 def user_headers(user_token: str) -> dict:
     """Headers with regular user authorization."""
     return {"Authorization": f"Bearer {user_token}"}
+
+
+# =============================================================================
+# Test Raw Data (for data service preprocessing tests)
+# =============================================================================
+
+
+def get_test_raw_dir() -> str:
+    """Directory for test raw data (used by data service preprocessing tests)."""
+    from pathlib import Path
+    return os.getenv("TEST_RAW_DIR") or str(
+        Path(__file__).resolve().parent.parent / "data" / "test" / "raw"
+    )
+
+
+def ensure_test_raw_data() -> None:
+    """
+    Ensure test raw directory contains the four required CSVs.
+    Downloads from S3 if any are missing; skips download if all are present.
+    """
+    raw_dir = get_test_raw_dir()
+    try:
+        from src.data.make_dataset import discover_raw_file_paths
+        discover_raw_file_paths(raw_dir)
+        return  # all four files already present
+    except FileNotFoundError:
+        pass  # at least one file missing, run import
+    from src.data.import_raw_data import import_raw_data
+    import_raw_data(
+        raw_data_relative_path=raw_dir,
+        filenames=[
+            "caracteristiques-2021.csv",
+            "lieux-2021.csv",
+            "usagers-2021.csv",
+            "vehicules-2021.csv",
+        ],
+        bucket_folder_url="https://mlops-project-db.s3.eu-west-1.amazonaws.com/accidents/",
+    )
+
+
+@pytest.fixture(scope="session")
+def ensure_test_raw_data_session():
+    """
+    Session-scoped fixture: ensure test raw data directory is populated
+    before any data service preprocessing tests run.
+    """
+    ensure_test_raw_data()
 
 
 # =============================================================================

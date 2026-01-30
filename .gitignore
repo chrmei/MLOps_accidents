@@ -95,3 +95,4 @@ target/
 
 doc/papers/*
 .venv
+data/test/*
