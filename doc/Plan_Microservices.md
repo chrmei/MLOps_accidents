@@ -2,41 +2,88 @@
 
 ## Architecture Overview
 
-Transform the monolithic MLOps project into 3 microservices:
+Transform the monolithic MLOps project into 4 microservices:
 
-1. **Data Service**: Handles data preprocessing (`make_dataset.py`, `build_features.py`)
-2. **Train Service**: Handles model training (`train_multi_model.py`, `base_trainer.py`)
-3. **Predict Service**: Handles model inference (`predict_model.py`)
+1. **Auth Service**: Handles authentication and user management (JWT tokens, user CRUD)
+2. **Data Service**: Handles data preprocessing (`make_dataset.py`, `build_features.py`)
+3. **Train Service**: Handles model training (`train_multi_model.py`, `base_trainer.py`)
+4. **Predict Service**: Handles model inference (`predict_model.py`)
 
 All services will be containerized with individual Dockerfiles, orchestrated via docker-compose, and fronted by Nginx as a reverse proxy with JWT authentication.
 
 ## Architecture Diagram
 
-```flowchart LR
-        Client["Client"] --> Nginx["Nginx"]
-
-        subgraph Docker["Docker Network"]
-            direction TB
-            Nginx --> Data["Data :8001"]
-            Nginx --> Train["Train :8002"]
-            Nginx --> Predict["Predict :8003"]
-
-            Volume["Shared Volume"]
-            Data --- Volume
-            Train --- Volume
-            Predict --- Volume
-        end
-
-        subgraph ML["ML Infrastructure"]
-            direction TB
-            S3["S3 / DVC"]
-            MLflow["MLflow"]
-        end
-
-        Data -->|DVC| S3
-        Train -->|DVC| S3
-        Predict -->|MLflow| MLflow
 ```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                              Docker Network                                  │
+│                                                                             │
+│    ┌──────────┐                                                             │
+│    │  Client  │                                                             │
+│    └────┬─────┘                                                             │
+│         │                                                                   │
+│         ▼                                                                   │
+│    ┌──────────┐    ┌─────────────┐  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐  │
+│    │  Nginx   │───▶│ Auth :8004  │  │ Data :8001  │  │ Train :8002 │  │Predict :8003│  │
+│    │  (JWT)   │───▶│             │  │             │  │             │  │             │  │
+│    │   :80    │───▶│ User Store  │  │  Job Store  │  │  Job Store  │  │             │  │
+│    └──────────┘    └──────┬──────┘  └──────┬──────┘  └──────┬──────┘  └─────────────┘  │
+│                                │                │                          │
+│                         ┌──────┴────────────────┴──────┐                   │
+│                         │      Shared Volumes          │                   │
+│                         │   /data    /models   /src    │                   │
+│                         └──────────────────────────────┘                   │
+│                                                                            │
+└────────────────────────────────────────────────────────────────────────────┘
+                                       │
+                                       │ HTTPS
+                                       ▼
+                         ┌─────────────────────────────┐
+                         │   External Infrastructure   │
+                         │  ┌───────────────────────┐  │
+                         │  │  DagsHub MLflow       │  │
+                         │  │  (Remote Tracking)    │  │
+                         │  └───────────────────────┘  │
+                         │  ┌───────────────────────┐  │
+                         │  │  DagsHub DVC Remote   │  │
+                         │  │  (Data Storage)       │  │
+                         │  └───────────────────────┘  │
+                         └─────────────────────────────┘
+```
+
+## Async Job Pattern
+
+Long-running operations (preprocessing, training) use an async job pattern to avoid HTTP timeouts:
+
+```
+┌────────┐                    ┌─────────┐                    ┌─────────────┐
+│ Client │                    │  Nginx  │                    │   Service   │
+└───┬────┘                    └────┬────┘                    └──────┬──────┘
+    │                              │                                │
+    │── POST /train ──────────────▶│                                │
+    │                              │───────────────────────────────▶│
+    │                              │                                │ create job
+    │◀── 202 Accepted ────────────│◀── {job_id: "abc123"} ────────│ start background
+    │    {job_id: "abc123"}        │                                │
+    │                              │                    ┌───────────┴───────────┐
+    │                              │                    │   Background Worker   │
+    │                              │                    │   (actual training)   │
+    │                              │                    └───────────┬───────────┘
+    │                              │                                │
+    │── GET /status/abc123 ───────▶│                                │
+    │                              │───────────────────────────────▶│
+    │◀── {status: "running"} ─────│◀───────────────────────────────│
+    │                              │                                │
+    │     ... poll again ...       │                                │
+    │                              │                                │
+    │── GET /status/abc123 ───────▶│                                │
+    │◀── {status: "completed"} ───│◀───────────────────────────────│
+```
+
+**Benefits:**
+- No HTTP timeout issues (requests return immediately)
+- Progress tracking via polling
+- Job history and status persistence
+- Can be upgraded to WebSocket for real-time updates
 
 ## Implementation Structure
 
@@ -47,9 +94,17 @@ services/
 ├── common/                    # Shared code across services
 │   ├── __init__.py
 │   ├── auth.py               # JWT authentication & RBAC
-│   ├── models.py             # Common Pydantic models
+│   ├── config.py             # Shared configuration (Pydantic Settings)
 │   ├── dependencies.py       # FastAPI dependencies
-│   └── config.py             # Shared configuration
+│   ├── job_store.py          # Async job management
+│   └── models.py             # Common Pydantic models
+│
+├── auth_service/
+│   ├── Dockerfile
+│   ├── main.py               # FastAPI app
+│   └── api/
+│       ├── __init__.py
+│       └── routes.py         # Auth endpoints (login, refresh, users)
 │
 ├── data_service/
 │   ├── Dockerfile
@@ -73,7 +128,7 @@ services/
 │   └── core/
 │       ├── __init__.py
 │       └── trainer.py        # Wraps train_multi_model.py
-|
+│
 ├── predict_service/
 │   ├── Dockerfile
 │   ├── main.py               # FastAPI app
@@ -84,9 +139,12 @@ services/
 │   └── core/
 │       ├── __init__.py
 │       └── predictor.py      # Wraps predict_model.py
-└── nginx/
-    ├── nginx.conf             # Nginx configuration
-    └── Dockerfile             # Optional: custom Nginx image
+│
+├── nginx/
+│   ├── nginx.conf            # Nginx configuration
+│   └── Dockerfile            # Custom Nginx image
+│
+└── env.example               # Environment variables template
 ```
 
 ### 2. Common Security Module (`services/common/auth.py`)
@@ -97,110 +155,233 @@ services/
 - User management (admin/normal user)
 - Token refresh mechanism
 
-### 3. Individual Dockerfiles
+### 3. Async Job Store (`services/common/job_store.py`)
+
+- In-memory job tracking (upgradeable to Redis/PostgreSQL)
+- Job lifecycle: PENDING → RUNNING → COMPLETED/FAILED
+- Progress tracking (0-100%)
+- Job history with FIFO eviction
+- Thread-safe with asyncio locks
+
+### 4. Individual Dockerfiles
 
 Each service gets its own Dockerfile:
 
 - Base image: `python:3.11-slim`
-- Install dependencies from `pyproject.toml`
+- Install dependencies from `requirements.txt`
 - Copy service-specific code + common module
 - Expose service port (8001, 8002, 8003)
 - Health check endpoints
 
-### 4. Docker Compose Configuration
+### 5. Docker Compose Configuration
 
-- 3 service containers (data, train, predict)
-- Nginx container as reverse proxy
+- 5 service containers (nginx, auth, data, train, predict)
+- Remote MLflow on DagsHub (no local MLflow container)
 - Shared volumes for `data/` and `models/`
-- Environment variables for configuration
+- Environment variables from `.env` file (including DagsHub credentials)
 - Network configuration for service communication
-- MLflow service (optional, if using local MLflow)
 
-### 5. Nginx Configuration
+### 6. Nginx Configuration
 
 - Reverse proxy rules for each service
-- JWT validation middleware (or forward to services for validation)
-- SSL/TLS termination (optional)
-- Rate limiting
+- JWT validation forwarded to services
+- Rate limiting (different zones for auth, general, predict)
 - CORS configuration
 - Health check endpoints
 
-### 6. API Endpoints Design
+## API Endpoints Design
 
-**Data Service** (`/api/v1/data/`):
+### Auth Service (`/api/v1/auth/`)
 
-- `POST /preprocess` - Run make_dataset.py (admin only)
-- `POST /build-features` - Run build_features.py (admin only)
-- `GET /status` - Check preprocessing status (admin only)
+| Endpoint | Method | Auth | Description |
+|----------|--------|------|-------------|
+| `/login` | POST | Public | Get access token |
+| `/refresh` | POST | Public | Refresh access token |
+| `/me` | GET | User | Get current user info |
+| `/users` | GET | Admin | List all users |
+| `/users` | POST | Admin | Create new user |
+| `/health` | GET | Public | Health check |
 
-**Train Service** (`/api/v1/train/`):
+### Data Service (`/api/v1/data/`)
 
-- `POST /train` - Train models (admin only)
-- `POST /fetch_best_model` - fetches best model from MLflow (reference make docker-run-predict-best implements this function already)
-- `GET /status/{job_id}` - Check training status (admin only)
-- `GET /models` - List available models (admin only, MLFLow)
-- `GET /metrics/{model_type}` - Get model metrics (admin only)
+| Endpoint | Method | Auth | Description |
+|----------|--------|------|-------------|
+| `/preprocess` | POST | Admin | Trigger preprocessing (returns job_id) |
+| `/build-features` | POST | Admin | Trigger feature engineering (returns job_id) |
+| `/status/{job_id}` | GET | Admin | Check job status |
+| `/jobs` | GET | Admin | List all jobs |
+| `/health` | GET | Public | Health check |
 
+### Train Service (`/api/v1/train/`)
 
-**Predict Service** (`/api/v1/predict/`):
+| Endpoint | Method | Auth | Description |
+|----------|--------|------|-------------|
+| `/` | POST | Admin | Trigger model training (returns job_id) |
+| `/status/{job_id}` | GET | Admin | Check training status |
+| `/jobs` | GET | Admin | List training jobs |
+| `/fetch-best-model` | POST | Admin | Fetch best model from MLflow |
+| `/models` | GET | Admin | List available models (MLflow) |
+| `/metrics/{model_type}` | GET | Admin | Get model metrics |
+| `/health` | GET | Public | Health check |
 
-- `POST /predict` - Make prediction (all authenticated users)
-- `GET /models` - List available models (all authenticated users)
-- `GET /health` - Health check (public)
+### Predict Service (`/api/v1/predict/`)
 
-### 7. Security Implementation
+| Endpoint | Method | Auth | Description |
+|----------|--------|------|-------------|
+| `/` | POST | User | Make single prediction |
+| `/batch` | POST | User | Make batch predictions |
+| `/models` | GET | User | List available models |
+| `/health` | GET | Public | Health check |
 
-- JWT tokens with expiration
-- Role-based access: `admin` vs `user`
-- Password-based authentication endpoint
-- Protected routes using FastAPI dependencies
-- Token refresh endpoint
+## Security Implementation
 
-### 8. Shared Storage Strategy
+### JWT Token Structure
+
+```json
+{
+  "sub": "username",
+  "role": "admin|user",
+  "exp": 1234567890,
+  "type": "access|refresh"
+}
+```
+
+### Role-Based Access Control
+
+| Role | Data Service | Train Service | Predict Service |
+|------|--------------|---------------|-----------------|
+| Admin | Full access | Full access | Full access |
+| User | No access | No access | Predict only |
+
+### FastAPI Dependencies
+
+```python
+from services.common.dependencies import AdminUser, AuthenticatedUser
+
+# Admin-only endpoint
+@router.post("/train")
+async def train(user: AdminUser):
+    ...
+
+# Any authenticated user
+@router.post("/predict")
+async def predict(user: AuthenticatedUser):
+    ...
+```
+
+## Shared Storage Strategy
 
 - **Development**: Docker volumes for `data/` and `models/`
-- [OPTIONAL] **Production**: S3/DVC remote for data, MLflow for models
+- **Production** (optional): S3/DVC remote for data, MLflow for models
 - Services read/write to shared locations
 - DVC integration maintained in data and train services
 
-## Key Files to Create/Modify
+## Key Files
 
-1. **New Files**:
+### Created Files
 
-   - `services/common/auth.py` - JWT authentication
-   - `services/data_service/main.py` - Data service FastAPI app
-   - `services/train_service/main.py` - Train service FastAPI app
-   - `services/predict_service/main.py` - Predict service FastAPI app
-   - `services/nginx/nginx.conf` - Nginx configuration
-   - `docker-compose.microservices.yml` - New compose file
-   - Individual Dockerfiles for each service
+| File | Description |
+|------|-------------|
+| `services/common/auth.py` | JWT authentication utilities |
+| `services/common/config.py` | Pydantic settings |
+| `services/common/dependencies.py` | FastAPI dependencies |
+| `services/common/job_store.py` | Async job management |
+| `services/common/models.py` | Pydantic models |
+| `services/auth_service/` | Dedicated authentication service |
+| `services/nginx/nginx.conf` | Nginx configuration |
+| `services/nginx/Dockerfile` | Nginx image |
+| `services/*/Dockerfile` | Service Dockerfiles |
+| `services/env.example` | Environment template |
+| `docker-compose.yml` | Orchestration (merged) |
 
-2. **Modified Files**:
+### Modified Files
 
-   - Existing Python modules will be imported/wrapped by services
-   - `docker-compose.yml` - Keep for development, add new compose file
+| File | Change |
+|------|--------|
+| `requirements.txt` | Added FastAPI dependencies |
+| `pyproject.toml` | Added FastAPI dependencies |
 
-3. **Configuration**:
+## Dependencies
 
-   - Environment variables for JWT secrets, service ports, MLflow URI
-   - `.env.example` for configuration template
+```
+# FastAPI & ASGI
+fastapi>=0.109.0
+uvicorn[standard]>=0.27.0
 
-## Dependencies to Add
+# Authentication
+python-jose[cryptography]>=3.3.0
+passlib[bcrypt]>=1.7.4
+python-multipart>=0.0.6
 
-- `fastapi` - API framework
-- `uvicorn[standard]` - ASGI server
-- `python-jose[cryptography]` - JWT handling
-- `passlib[bcrypt]` - Password hashing
-- `python-multipart` - Form data handling
-- `pydantic` - Data validation (likely already in FastAPI deps)
+# Configuration
+pydantic>=2.5.0
+pydantic-settings>=2.1.0
+
+# HTTP client
+httpx>=0.26.0
+
+# Utilities
+python-dotenv>=1.0.0
+```
 
 ## Migration Strategy
 
-1. Create common auth module
-2. Create data service (test with existing code)
-3. Create train service (test with existing code)
-4. Create predict service (test with existing code)
-5. Set up Nginx reverse proxy
-6. Integrate JWT authentication
-7. Test end-to-end workflow
-8. Update documentation
+1. ✅ Create common auth module
+2. ✅ Create job store for async operations
+3. ✅ Set up Nginx reverse proxy
+4. ✅ Create dedicated auth service
+5. ⬜ Create data service (FastAPI app)
+6. ⬜ Create train service (FastAPI app)
+7. ⬜ Create predict service (FastAPI app)
+8. ⬜ Integrate JWT authentication
+9. ⬜ Test end-to-end workflow
+10. ⬜ Update documentation
+
+## Environment Variables
+
+```bash
+# JWT Configuration
+JWT_SECRET_KEY=your-secret-key
+JWT_ALGORITHM=HS256
+ACCESS_TOKEN_EXPIRE_MINUTES=30
+REFRESH_TOKEN_EXPIRE_DAYS=7
+
+# Admin User
+ADMIN_USERNAME=admin
+ADMIN_PASSWORD=change-me
+ADMIN_EMAIL=admin@mlops.local
+
+# Service Configuration
+DEBUG=false
+LOG_LEVEL=INFO
+
+# MLflow (DagsHub Remote)
+# Get credentials from: https://dagshub.com/user/settings/tokens
+MLFLOW_TRACKING_URI=https://dagshub.com/<username>/<repo>.mlflow
+MLFLOW_TRACKING_USERNAME=your-dagshub-username
+MLFLOW_TRACKING_PASSWORD=your-dagshub-token
+```
+
+## Production Considerations
+
+### Job Store Upgrade Path
+
+| Option | Use Case |
+|--------|----------|
+| In-memory (current) | Development, single instance |
+| Redis | Production, multiple instances, real-time updates |
+| PostgreSQL | Full persistence, queryable history |
+| Celery + Redis | Complex workflows, retries, scheduling |
+
+### Scaling
+
+- Auth service can scale independently (stateless, validates tokens)
+- Nginx can load balance multiple instances of predict service
+- Data and train services typically run single instance (write operations)
+- Consider Kubernetes for production scaling
+
+### Monitoring
+
+- Health endpoints for all services
+- MLflow for model metrics and experiment tracking
+- Consider adding Prometheus metrics endpoints

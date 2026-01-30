@@ -1,4 +1,4 @@
-.PHONY: help install install-dev sync lock update clean lint format type-check test test-cov run-import run-preprocess run-features run-train run-train-grid run-predict run-predict-file workflow-all workflow-data workflow-ml dvc-init dvc-setup-remote dvc-status dvc-push dvc-pull dvc-repro docker-build docker-build-dev docker-build-prod docker-build-train docker-run-dev docker-run-prod docker-run-train docker-run-predict docker-run-predict-mlflow docker-run-predict-best docker-dvc-pull docker-clean
+.PHONY: help install install-dev sync lock update clean lint format type-check test test-cov test-api test-api-cov test-api-service test-api-service-cov test-api-auth test-api-data test-api-train test-api-predict run-import run-preprocess run-features run-train run-train-grid run-predict run-predict-file workflow-all workflow-data workflow-ml dvc-init dvc-setup-remote dvc-status dvc-push dvc-pull dvc-repro docker-up docker-down docker-build-services docker-logs docker-status docker-health docker-restart docker-dev docker-build docker-build-dev docker-build-train docker-dvc-pull docker-clean docker-test docker-test-build docker-test-run docker-test-cov docker-test-service
 
 # Load .env file if it exists (cross-platform with GNU Make)
 # Note: On Windows, use Git Bash, WSL, or another Unix-like environment
@@ -101,6 +101,71 @@ test: ## Run tests with pytest
 test-cov: ## Run tests with coverage report
 	@echo "Running tests with coverage..."
 	$(PYTEST) --cov=src --cov-report=term-missing --cov-report=html
+
+# =============================================================================
+# API Endpoint Tests
+# =============================================================================
+
+test-api: ## Run API endpoint tests (requires services to be running)
+	@echo "Running API endpoint tests..."
+	@if [ -z "$(BASE_URL)" ]; then \
+		echo "Using default BASE_URL: http://localhost"; \
+		BASE_URL=http://localhost $(PYTEST) tests/ -v --tb=short; \
+	else \
+		echo "Using BASE_URL: $(BASE_URL)"; \
+		BASE_URL=$(BASE_URL) $(PYTEST) tests/ -v --tb=short; \
+	fi
+
+test-api-cov: ## Run API endpoint tests with coverage
+	@echo "Running API endpoint tests with coverage..."
+	@if [ -z "$(BASE_URL)" ]; then \
+		echo "Using default BASE_URL: http://localhost"; \
+		BASE_URL=http://localhost $(PYTEST) tests/ -v --tb=short --cov=services --cov-report=term-missing --cov-report=html; \
+	else \
+		echo "Using BASE_URL: $(BASE_URL)"; \
+		BASE_URL=$(BASE_URL) $(PYTEST) tests/ -v --tb=short --cov=services --cov-report=term-missing --cov-report=html; \
+	fi
+
+test-api-auth: ## Run auth service API tests only
+	@echo "Running auth service API tests..."
+	@if [ -z "$(BASE_URL)" ]; then \
+		BASE_URL=http://localhost $(PYTEST) tests/test_auth_service.py -v --tb=short; \
+	else \
+		BASE_URL=$(BASE_URL) $(PYTEST) tests/test_auth_service.py -v --tb=short; \
+	fi
+
+test-api-data: ## Run data service API tests only
+	@echo "Running data service API tests..."
+	@if [ -z "$(BASE_URL)" ]; then \
+		BASE_URL=http://localhost $(PYTEST) tests/test_data_service.py -v --tb=short; \
+	else \
+		BASE_URL=$(BASE_URL) $(PYTEST) tests/test_data_service.py -v --tb=short; \
+	fi
+
+test-api-train: ## Run train service API tests only
+	@echo "Running train service API tests..."
+	@if [ -z "$(BASE_URL)" ]; then \
+		BASE_URL=http://localhost $(PYTEST) tests/test_train_service.py -v --tb=short; \
+	else \
+		BASE_URL=$(BASE_URL) $(PYTEST) tests/test_train_service.py -v --tb=short; \
+	fi
+
+test-api-predict: ## Run predict service API tests only
+	@echo "Running predict service API tests..."
+	@if [ -z "$(BASE_URL)" ]; then \
+		BASE_URL=http://localhost $(PYTEST) tests/test_predict_service.py -v --tb=short; \
+	else \
+		BASE_URL=$(BASE_URL) $(PYTEST) tests/test_predict_service.py -v --tb=short; \
+	fi
+
+test-api-service: ## Run API tests in Docker container (requires docker-compose)
+	@echo "Running API tests in Docker container..."
+	@echo "Note: This will start services if not already running..."
+	docker compose --profile test run --rm test
+
+test-api-service-cov: ## Run API tests in Docker container with coverage
+	@echo "Running API tests in Docker container with coverage..."
+	docker compose --profile test run --rm test pytest tests/ -v --tb=short --cov=services --cov-report=term-missing --cov-report=html
 
 # Data pipeline commands
 run-import: ## Import raw data from S3
@@ -216,90 +281,135 @@ dvc-repro: ## Reproduce DVC pipeline
 	@echo "Reproducing DVC pipeline..."
 	@$(DVC) repro
 
-# Docker commands
-docker-build: ## Build all Docker images (dev, prod, train)
-	@echo "Building all Docker images..."
-	docker build -t mlops-accidents:dev --target dev .
-# docker build -t mlops-accidents:prod --target prod .
-	docker build -t mlops-accidents:train --target train .
-	@echo "All Docker images built successfully!"
+# =============================================================================
+# Microservices Docker commands
+# =============================================================================
 
-docker-build-dev: ## Build development Docker image
+docker-up: ## Start all microservices (nginx, auth, data, train, predict)
+	@echo "Starting microservices..."
+	docker compose up -d nginx auth data train predict
+	@echo "Services started! API available at http://localhost"
+
+docker-up-all: ## Start all microservices including test service
+	@echo "Starting all microservices including test..."
+	docker compose up -d
+	@echo "All services started!"
+
+docker-down: ## Stop all microservices
+	@echo "Stopping microservices..."
+	docker compose down
+	@echo "Services stopped."
+
+docker-build-services: ## Build all microservice images
+	@echo "Building microservice images..."
+	docker compose build nginx auth data train predict
+	@echo "All microservice images built!"
+
+docker-build-test: ## Build test service image
+	@echo "Building test service image..."
+	docker compose build test
+	@echo "Test service image built!"
+
+docker-logs: ## Show logs from all services (follow mode)
+	docker compose logs -f
+
+docker-logs-nginx: ## Show nginx logs
+	docker compose logs -f nginx
+
+docker-logs-data: ## Show data service logs
+	docker compose logs -f data
+
+docker-logs-train: ## Show train service logs
+	docker compose logs -f train
+
+docker-logs-predict: ## Show predict service logs
+	docker compose logs -f predict
+
+docker-status: ## Show status of all services
+	docker compose ps
+
+docker-health: ## Check health of all services via API
+	@echo "Checking service health..."
+	@echo "--- Nginx Gateway ---"
+	@curl -sf http://localhost/health 2>/dev/null && echo "" || echo "  Not responding"
+	@echo "--- Auth Service ---"
+	@curl -sf http://localhost/api/v1/auth/health 2>/dev/null && echo "" || echo "  Not responding"
+	@echo "--- Data Service ---"
+	@curl -sf http://localhost/api/v1/data/health 2>/dev/null && echo "" || echo "  Not responding"
+	@echo "--- Train Service ---"
+	@curl -sf http://localhost/api/v1/train/health 2>/dev/null && echo "" || echo "  Not responding"
+	@echo "--- Predict Service ---"
+	@curl -sf http://localhost/api/v1/predict/health 2>/dev/null && echo "" || echo "  Not responding"
+
+docker-restart: ## Restart all microservices
+	@echo "Restarting microservices..."
+	docker compose restart nginx auth data train predict
+
+docker-test: ## Run API tests in Docker (starts services if needed, runs tests, stops test container)
+	@echo "Running API tests in Docker..."
+	@echo "Starting services if not running..."
+	@docker compose up -d nginx auth data train predict || true
+	@echo "Waiting for services to be healthy..."
+	@sleep 5
+	@echo "Running tests..."
+	docker compose --profile test run --rm test
+	@echo "Tests completed!"
+
+docker-test-build: ## Build test service Docker image
+	@echo "Building test service..."
+	docker compose build test
+
+docker-test-run: ## Run API tests in Docker with custom command (usage: make docker-test-run CMD="pytest tests/test_auth_service.py -v")
+	@if [ -z "$(CMD)" ]; then \
+		echo "Running all API tests..."; \
+		docker compose --profile test run --rm test; \
+	else \
+		echo "Running custom test command: $(CMD)"; \
+		docker compose --profile test run --rm test $(CMD); \
+	fi
+
+docker-test-cov: ## Run API tests in Docker with coverage report
+	@echo "Running API tests with coverage..."
+	docker compose --profile test run --rm test pytest tests/ -v --tb=short --cov=services --cov-report=term-missing --cov-report=html
+
+docker-test-service: ## Run tests for specific service (usage: make docker-test-service SERVICE=auth)
+	@if [ -z "$(SERVICE)" ]; then \
+		echo "Error: SERVICE variable required. Usage: make docker-test-service SERVICE=auth"; \
+		echo "Available services: auth, data, train, predict"; \
+		exit 1; \
+	fi
+	@echo "Running tests for $(SERVICE) service..."
+	docker compose --profile test run --rm test pytest tests/test_$(SERVICE)_service.py -v --tb=short
+
+docker-dev: ## Start development shell container (interactive)
+	@echo "Starting development container..."
+	docker compose --profile dev run --rm dev
+
+# =============================================================================
+# Legacy Docker commands (standalone containers)
+# =============================================================================
+
+docker-build: ## Build legacy Docker images (dev, train)
+	@echo "Building legacy Docker images..."
+	docker build -t mlops-accidents:dev --target dev .
+	docker build -t mlops-accidents:train --target train .
+	@echo "Legacy Docker images built!"
+
+docker-build-dev: ## Build development Docker image (standalone)
 	@echo "Building development Docker image..."
 	docker build -t mlops-accidents:dev --target dev .
 
-# docker-build-prod: ## Build production Docker image
-# 	@echo "Building production Docker image..."
-# 	docker build -t mlops-accidents:prod --target prod .
-
-docker-build-train: ## Build training Docker image
+docker-build-train: ## Build training Docker image (standalone)
 	@echo "Building training Docker image..."
 	docker build -t mlops-accidents:train --target train .
 
-docker-run-dev: ## Run development container with interactive bash shell
-	@echo "Starting development container (interactive)..."
-	docker run -it --rm -v $(PWD):/app mlops-accidents:dev
-
-docker-run-dev-detached: ## Run development container in background (detached mode)
-	@echo "Starting development container (detached)..."
-	docker run -d --rm -v $(PWD):/app --name mlops-dev mlops-accidents:dev tail -f /dev/null
-	@echo "Container 'mlops-dev' is running. Attach with: docker exec -it mlops-dev bash"
-	@echo "Stop with: docker stop mlops-dev"
-
-docker-run-dev-exec: ## Run command in dev container (usage: make docker-run-dev-exec CMD="python script.py")
-	@if [ -z "$(CMD)" ]; then \
-		echo "Error: CMD variable is required. Usage: make docker-run-dev-exec CMD=\"your command\""; \
-		exit 1; \
-	fi
-	@echo "Running command in container: $(CMD)"
-	docker run --rm -v $(PWD):/app mlops-accidents:dev bash -c "$(CMD)"
-
-# docker-run-prod: ## Run production inference container
-# 	@echo "Starting production container..."
-# 	docker run -it --rm -v $(PWD)/models:/app/models -v $(PWD)/data:/app/data mlops-accidents:prod
-
-docker-run-train: ## Run training pipeline in container (non-interactive)
-	@echo "Starting training container..."
-	docker run --rm -v $(PWD):/app mlops-accidents:train
-
-docker-run-train-interactive: ## Run training container with interactive shell
-	@echo "Starting training container (interactive)..."
-	docker run -it --rm -v $(PWD):/app mlops-accidents:train bash
-
-docker-run-predict: ## Run prediction in Docker container (usage: make docker-run-predict [ARGS="--use-best-model"])
-	@echo "Running prediction in Docker container..."
-	@if [ -z "$(ARGS)" ]; then \
-		docker run --rm -v $(PWD):/app \
-			-e DAGSHUB_REPO=$(DAGSHUB_REPO) \
-			-e MLFLOW_TRACKING_URI=$(MLFLOW_TRACKING_URI) \
-			-e USE_BEST_MODEL=$(USE_BEST_MODEL) \
-			-e USE_MLFLOW_PRODUCTION=$(USE_MLFLOW_PRODUCTION) \
-			mlops-accidents:dev \
-			python src/models/predict_model.py --use-best-model; \
-	else \
-		docker run --rm -v $(PWD):/app \
-			-e DAGSHUB_REPO=$(DAGSHUB_REPO) \
-			-e MLFLOW_TRACKING_URI=$(MLFLOW_TRACKING_URI) \
-			-e USE_BEST_MODEL=$(USE_BEST_MODEL) \
-			-e USE_MLFLOW_PRODUCTION=$(USE_MLFLOW_PRODUCTION) \
-			mlops-accidents:dev \
-			python src/models/predict_model.py $(ARGS); \
-	fi
-
-docker-run-predict-mlflow: ## Run prediction using MLflow Production model in Docker
-	@echo "Running prediction with MLflow Production model..."
-	@make docker-run-predict ARGS="--use-mlflow-production"
-
-docker-run-predict-best: ## Run prediction using best Production model in Docker
-	@echo "Running prediction with best Production model..."
-	@make docker-run-predict ARGS="--use-best-model"
-
 docker-dvc-pull: ## Pull data/models from DVC remote using Docker Compose
 	@echo "Pulling data/models from DVC remote via Docker..."
-	docker compose --profile dvc up dvc-pull
+	docker compose --profile dvc run --rm dvc-pull
 
-# update mlops-accidents:prod if prod target is uncommented in Dockerfile
-docker-clean: ## Remove all Docker images and containers
-	@echo "Cleaning up Docker images..."
+docker-clean: ## Remove all Docker containers, images, and volumes
+	@echo "Stopping and removing containers..."
+	docker compose down --rmi local --volumes 2>/dev/null || true
+	@echo "Removing legacy images..."
 	docker rmi mlops-accidents:dev mlops-accidents:train 2>/dev/null || true
 	@echo "Cleanup complete!"

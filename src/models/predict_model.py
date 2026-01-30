@@ -228,6 +228,38 @@ def find_best_production_model(
         return None, None, None
 
 
+def load_best_production_model(
+    config_path: str = "src/config/model_config.yaml",
+    metric: str = "f1_score",
+    stage: str = "Production",
+):
+    """
+    Find the best Production model in MLflow and load it (model + encoders + metadata).
+    Used by the predict service at startup. Fails if no Production model exists.
+
+    Returns
+    -------
+    tuple
+        (model, label_encoders, metadata, model_type) e.g. model_type "lightgbm"
+    """
+    best_model_name, best_model_type, _ = find_best_production_model(
+        config_path=config_path,
+        metric=metric,
+        stage=stage,
+    )
+    if not best_model_name:
+        raise ValueError(
+            "No Production model found in MLflow. "
+            "Promote a model to Production (e.g. via MLflow UI or manage_model_registry)."
+        )
+    model, label_encoders, metadata = load_model_from_registry(
+        best_model_name,
+        stage=stage,
+        config_path=config_path,
+    )
+    return model, label_encoders, metadata, best_model_type
+
+
 def get_model_name_from_config(model_type: str = "XGBoost", config_path: str = "src/config/model_config.yaml") -> str:
     """
     Get registered model name from configuration file.
@@ -422,21 +454,57 @@ def load_model_from_registry(
         
         run_id = model_version.run_id
         logger.info(f"Loading artifacts from MLflow run: {run_id}")
-        
-        # Download artifacts to a temporary directory
+
+        # Download artifacts to a temporary directory.
+        # Training logs metadata/encoders under "artifacts/"; the run may not have that path
+        # (e.g. older run or different backend), so list first and download root if needed.
         with tempfile.TemporaryDirectory() as temp_dir:
-            # Download artifacts directory
-            artifacts_path = client.download_artifacts(run_id, "artifacts", temp_dir)
-            logger.debug(f"Downloaded artifacts to: {artifacts_path}")
-            
-            # Load metadata - try different possible paths
-            metadata_file = os.path.join(artifacts_path, "model_metadata.joblib")
+            artifact_path_to_download = "artifacts"
+            try:
+                top_level = client.list_artifacts(run_id, "")
+                path_names = [p.path for p in top_level] if top_level else []
+                if "artifacts" not in path_names:
+                    # Run has no "artifacts" folder (e.g. promoted from older run); download root
+                    artifact_path_to_download = ""
+                    logger.debug(
+                        "Run has no 'artifacts' path (found: %s), downloading run root",
+                        path_names or "[]",
+                    )
+            except Exception as list_err:
+                logger.debug("Could not list run artifacts: %s", list_err)
+
+            downloaded_root = False
+            try:
+                artifacts_path = client.download_artifacts(
+                    run_id, artifact_path_to_download, temp_dir
+                )
+                logger.debug(f"Downloaded artifacts to: {artifacts_path}")
+            except Exception as download_err:
+                if artifact_path_to_download == "artifacts":
+                    # Retry with root in case path format differs (e.g. remote backend)
+                    try:
+                        artifacts_path = client.download_artifacts(run_id, "", temp_dir)
+                        downloaded_root = True
+                        logger.debug("Downloaded run root instead: %s", artifacts_path)
+                    except Exception:
+                        raise download_err
+                else:
+                    raise download_err
+
+            # Resolve artifacts subfolder when we downloaded root (files are in artifacts/)
+            search_base = artifacts_path
+            if artifact_path_to_download == "" or downloaded_root:
+                artifacts_sub = os.path.join(artifacts_path, "artifacts")
+                if os.path.isdir(artifacts_sub):
+                    search_base = artifacts_sub
+
+            # Load metadata - try multiple possible locations
+            metadata_file = os.path.join(search_base, "model_metadata.joblib")
             if not os.path.exists(metadata_file):
-                # Try alternative path structure
-                alt_path = os.path.join(temp_dir, "artifacts", "model_metadata.joblib")
-                if os.path.exists(alt_path):
-                    metadata_file = alt_path
-            
+                metadata_file = os.path.join(artifacts_path, "model_metadata.joblib")
+            if not os.path.exists(metadata_file):
+                metadata_file = os.path.join(temp_dir, "artifacts", "model_metadata.joblib")
+
             if os.path.exists(metadata_file):
                 metadata = joblib.load(metadata_file)
                 logger.info("Loaded model metadata from MLflow artifacts")
@@ -445,15 +513,14 @@ def load_model_from_registry(
                     "Model metadata not found in MLflow artifacts. "
                     "Consider storing metadata as MLflow artifacts during training."
                 )
-            
-            # Load label encoders - try different possible paths
-            encoders_file = os.path.join(artifacts_path, "label_encoders.joblib")
+
+            # Load label encoders - try multiple possible locations
+            encoders_file = os.path.join(search_base, "label_encoders.joblib")
             if not os.path.exists(encoders_file):
-                # Try alternative path structure
-                alt_path = os.path.join(temp_dir, "artifacts", "label_encoders.joblib")
-                if os.path.exists(alt_path):
-                    encoders_file = alt_path
-            
+                encoders_file = os.path.join(artifacts_path, "label_encoders.joblib")
+            if not os.path.exists(encoders_file):
+                encoders_file = os.path.join(temp_dir, "artifacts", "label_encoders.joblib")
+
             if os.path.exists(encoders_file):
                 label_encoders = joblib.load(encoders_file)
                 logger.info("Loaded label encoders from MLflow artifacts")
@@ -466,7 +533,9 @@ def load_model_from_registry(
                 local_encoders_path = "models/label_encoders.joblib"
                 if os.path.exists(local_encoders_path):
                     label_encoders = joblib.load(local_encoders_path)
-                    logger.info(f"Loaded label encoders from local filesystem fallback: {local_encoders_path}")
+                    logger.info(
+                        f"Loaded label encoders from local filesystem fallback: {local_encoders_path}"
+                    )
     
     except Exception as e:
         logger.warning(f"Failed to load artifacts from MLflow: {e}")

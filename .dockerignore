@@ -2,6 +2,7 @@
 .gitignore
 .dvc
 .dvc/cache
+.dvcignore
 __pycache__
 *.pyc
 *.pyo
@@ -15,4 +16,17 @@ reports
 logs
 data
 models
-/*.egg-info
+*.egg-info
+.egg-info
+doc
+references
+scripts
+.github
+Makefile
+dvc.yaml
+dvc.lock
+uv.lock
+doc/**/*.md
+.python-version
+.tool-versions
+LICENSE
