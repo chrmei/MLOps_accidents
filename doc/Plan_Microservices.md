@@ -2,11 +2,12 @@
 
 ## Architecture Overview
 
-Transform the monolithic MLOps project into 3 microservices:
+Transform the monolithic MLOps project into 4 microservices:
 
-1. **Data Service**: Handles data preprocessing (`make_dataset.py`, `build_features.py`)
-2. **Train Service**: Handles model training (`train_multi_model.py`, `base_trainer.py`)
-3. **Predict Service**: Handles model inference (`predict_model.py`)
+1. **Auth Service**: Handles authentication and user management (JWT tokens, user CRUD)
+2. **Data Service**: Handles data preprocessing (`make_dataset.py`, `build_features.py`)
+3. **Train Service**: Handles model training (`train_multi_model.py`, `base_trainer.py`)
+4. **Predict Service**: Handles model inference (`predict_model.py`)
 
 All services will be containerized with individual Dockerfiles, orchestrated via docker-compose, and fronted by Nginx as a reverse proxy with JWT authentication.
 
@@ -21,11 +22,11 @@ All services will be containerized with individual Dockerfiles, orchestrated via
 │    └────┬─────┘                                                             │
 │         │                                                                   │
 │         ▼                                                                   │
-│    ┌──────────┐         ┌─────────────┐  ┌─────────────┐  ┌─────────────┐  │
-│    │  Nginx   │────────▶│ Data :8001  │  │ Train :8002 │  │Predict :8003│  │
-│    │  (JWT)   │────────▶│             │  │             │  │             │  │
-│    │   :80    │────────▶│  Job Store  │  │  Job Store  │  │  Auth API   │  │
-│    └──────────┘         └──────┬──────┘  └──────┬──────┘  └─────────────┘  │
+│    ┌──────────┐    ┌─────────────┐  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐  │
+│    │  Nginx   │───▶│ Auth :8004  │  │ Data :8001  │  │ Train :8002 │  │Predict :8003│  │
+│    │  (JWT)   │───▶│             │  │             │  │             │  │             │  │
+│    │   :80    │───▶│ User Store  │  │  Job Store  │  │  Job Store  │  │             │  │
+│    └──────────┘    └──────┬──────┘  └──────┬──────┘  └──────┬──────┘  └─────────────┘  │
 │                                │                │                          │
 │                         ┌──────┴────────────────┴──────┐                   │
 │                         │      Shared Volumes          │                   │
@@ -98,6 +99,13 @@ services/
 │   ├── job_store.py          # Async job management
 │   └── models.py             # Common Pydantic models
 │
+├── auth_service/
+│   ├── Dockerfile
+│   ├── main.py               # FastAPI app
+│   └── api/
+│       ├── __init__.py
+│       └── routes.py         # Auth endpoints (login, refresh, users)
+│
 ├── data_service/
 │   ├── Dockerfile
 │   ├── main.py               # FastAPI app
@@ -167,7 +175,7 @@ Each service gets its own Dockerfile:
 
 ### 5. Docker Compose Configuration
 
-- 4 service containers (nginx, data, train, predict)
+- 5 service containers (nginx, auth, data, train, predict)
 - Remote MLflow on DagsHub (no local MLflow container)
 - Shared volumes for `data/` and `models/`
 - Environment variables from `.env` file (including DagsHub credentials)
@@ -182,6 +190,17 @@ Each service gets its own Dockerfile:
 - Health check endpoints
 
 ## API Endpoints Design
+
+### Auth Service (`/api/v1/auth/`)
+
+| Endpoint | Method | Auth | Description |
+|----------|--------|------|-------------|
+| `/login` | POST | Public | Get access token |
+| `/refresh` | POST | Public | Refresh access token |
+| `/me` | GET | User | Get current user info |
+| `/users` | GET | Admin | List all users |
+| `/users` | POST | Admin | Create new user |
+| `/health` | GET | Public | Health check |
 
 ### Data Service (`/api/v1/data/`)
 
@@ -213,16 +232,6 @@ Each service gets its own Dockerfile:
 | `/batch` | POST | User | Make batch predictions |
 | `/models` | GET | User | List available models |
 | `/health` | GET | Public | Health check |
-
-### Auth Endpoints (`/api/v1/auth/`)
-
-| Endpoint | Method | Auth | Description |
-|----------|--------|------|-------------|
-| `/login` | POST | Public | Get access token |
-| `/refresh` | POST | Public | Refresh access token |
-| `/me` | GET | User | Get current user info |
-| `/users` | GET | Admin | List all users |
-| `/users` | POST | Admin | Create new user |
 
 ## Security Implementation
 
@@ -273,11 +282,12 @@ async def predict(user: AuthenticatedUser):
 
 | File | Description |
 |------|-------------|
-| `services/common/auth.py` | JWT authentication |
+| `services/common/auth.py` | JWT authentication utilities |
 | `services/common/config.py` | Pydantic settings |
 | `services/common/dependencies.py` | FastAPI dependencies |
 | `services/common/job_store.py` | Async job management |
 | `services/common/models.py` | Pydantic models |
+| `services/auth_service/` | Dedicated authentication service |
 | `services/nginx/nginx.conf` | Nginx configuration |
 | `services/nginx/Dockerfile` | Nginx image |
 | `services/*/Dockerfile` | Service Dockerfiles |
@@ -319,12 +329,13 @@ python-dotenv>=1.0.0
 1. ✅ Create common auth module
 2. ✅ Create job store for async operations
 3. ✅ Set up Nginx reverse proxy
-4. ⬜ Create data service (FastAPI app)
-5. ⬜ Create train service (FastAPI app)
-6. ⬜ Create predict service (FastAPI app)
-7. ⬜ Integrate JWT authentication
-8. ⬜ Test end-to-end workflow
-9. ⬜ Update documentation
+4. ✅ Create dedicated auth service
+5. ⬜ Create data service (FastAPI app)
+6. ⬜ Create train service (FastAPI app)
+7. ⬜ Create predict service (FastAPI app)
+8. ⬜ Integrate JWT authentication
+9. ⬜ Test end-to-end workflow
+10. ⬜ Update documentation
 
 ## Environment Variables
 
@@ -364,6 +375,7 @@ MLFLOW_TRACKING_PASSWORD=your-dagshub-token
 
 ### Scaling
 
+- Auth service can scale independently (stateless, validates tokens)
 - Nginx can load balance multiple instances of predict service
 - Data and train services typically run single instance (write operations)
 - Consider Kubernetes for production scaling

@@ -34,19 +34,3 @@ class BatchPredictionResponse(BaseModel):
     predictions: List[Any]
     count: int
     model_type: str
-
-
-class LoginRequest(BaseModel):
-    """Request payload for login."""
-
-    username: str
-    password: str
-
-
-class LoginResponse(BaseModel):
-    """Response payload for login."""
-
-    access_token: str
-    refresh_token: Optional[str] = None
-    token_type: str = "bearer"
-    expires_in: int

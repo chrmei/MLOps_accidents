@@ -3,6 +3,7 @@
 # =============================================================================
 # Microservices:
 #   - nginx:   Reverse proxy / API Gateway (port 80)
+#   - auth:    Authentication service (port 8004)
 #   - data:    Data preprocessing service (port 8001)
 #   - train:   Model training service (port 8002)
 #   - predict: Prediction service (port 8003)
@@ -33,6 +34,8 @@ services:
       # Uncomment for SSL certificates
       # - ./services/nginx/ssl:/etc/nginx/ssl:ro
     depends_on:
+      auth:
+        condition: service_healthy
       data:
         condition: service_healthy
       train:
@@ -126,7 +129,40 @@ services:
       start_period: 30s
 
   # ===========================================================================
-  # Predict Service - Model Inference & Auth
+  # Auth Service - Authentication & User Management
+  # ===========================================================================
+  auth:
+    build:
+      context: .
+      dockerfile: ./services/auth_service/Dockerfile
+    container_name: mlops-auth-service
+    environment:
+      - SERVICE_NAME=auth-service
+      - DEBUG=${DEBUG:-false}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY:-CHANGE_ME_IN_PRODUCTION}
+      - JWT_ALGORITHM=${JWT_ALGORITHM:-HS256}
+      - ACCESS_TOKEN_EXPIRE_MINUTES=${ACCESS_TOKEN_EXPIRE_MINUTES:-30}
+      - REFRESH_TOKEN_EXPIRE_DAYS=${REFRESH_TOKEN_EXPIRE_DAYS:-7}
+      - ADMIN_USERNAME=${ADMIN_USERNAME:-admin}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD:-CHANGE_ME_ADMIN_PASSWORD}
+      - ADMIN_EMAIL=${ADMIN_EMAIL:-admin@mlops.local}
+      - PYTHONUNBUFFERED=1
+      - PYTHONWARNINGS=ignore
+    ports:
+      - "8004:8004"
+    networks:
+      - mlops-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8004/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # ===========================================================================
+  # Predict Service - Model Inference
   # ===========================================================================
   predict:
     build:
@@ -139,11 +175,6 @@ services:
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
       - JWT_SECRET_KEY=${JWT_SECRET_KEY:-CHANGE_ME_IN_PRODUCTION}
       - JWT_ALGORITHM=${JWT_ALGORITHM:-HS256}
-      - ACCESS_TOKEN_EXPIRE_MINUTES=${ACCESS_TOKEN_EXPIRE_MINUTES:-30}
-      - REFRESH_TOKEN_EXPIRE_DAYS=${REFRESH_TOKEN_EXPIRE_DAYS:-7}
-      - ADMIN_USERNAME=${ADMIN_USERNAME:-admin}
-      - ADMIN_PASSWORD=${ADMIN_PASSWORD:-CHANGE_ME_ADMIN_PASSWORD}
-      - ADMIN_EMAIL=${ADMIN_EMAIL:-admin@mlops.local}
       - MLFLOW_TRACKING_URI=${MLFLOW_TRACKING_URI}
       - MLFLOW_TRACKING_USERNAME=${MLFLOW_TRACKING_USERNAME}
       - MLFLOW_TRACKING_PASSWORD=${MLFLOW_TRACKING_PASSWORD}
