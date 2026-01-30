@@ -2,7 +2,7 @@
 # Multi-stage Dockerfile for all Python microservices
 # =============================================================================
 # Build with: docker build -f services/Dockerfile.python --target <stage> .
-# Stages: base | auth_service | data_service | train_service | predict_service | test_service
+# Stages: base | auth_service | data_service | train_service | predict_service | docs_service | test_service
 # Base is shared; only one pip install of external deps. Service stages add code
 # and run fast editable install. Use DOCKER_BUILDKIT=1 for cache mounts.
 # =============================================================================
@@ -96,6 +96,21 @@ EXPOSE 8003
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
     CMD curl -f http://localhost:8003/health || exit 1
 CMD ["uvicorn", "services.predict_service.main:app", "--host", "0.0.0.0", "--port", "8003"]
+
+# -----------------------------------------------------------------------------
+# Docs Service - OpenAPI aggregator (merged /docs and /openapi.json)
+# -----------------------------------------------------------------------------
+FROM base AS docs_service
+COPY pyproject.toml setup.py README.md ./
+COPY src /app/src
+COPY services/common /app/services/common
+COPY services/docs_service /app/services/docs_service
+RUN pip install -e . && chown -R mlops:mlops /app
+USER mlops
+EXPOSE 8010
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD curl -f http://localhost:8010/health || exit 1
+CMD ["uvicorn", "services.docs_service.main:app", "--host", "0.0.0.0", "--port", "8010"]
 
 # -----------------------------------------------------------------------------
 # Test Service
