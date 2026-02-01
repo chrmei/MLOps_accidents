@@ -347,7 +347,8 @@ docker-restart: ## Restart all microservices
 
 docker-test: ## Run API tests in Docker (starts services if needed, runs tests, stops test container)
 	@echo "Running API tests in Docker..."
-	@echo "Starting services if not running..."
+	@echo "Building and starting services if not running..."
+	@docker compose build nginx auth data train predict
 	@docker compose up -d nginx auth data train predict || true
 	@echo "Waiting for services to be healthy..."
 	@sleep 5

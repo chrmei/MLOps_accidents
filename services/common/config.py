@@ -53,6 +53,12 @@ class Settings(BaseSettings):
     PREPROCESSED_DATA_DIR: str = "/app/data/preprocessed"
 
     # ==========================================================================
+    # Model config (train service: path to model_config.yaml; writable in Docker
+    # when set to e.g. /app/data/model_config.yaml)
+    # ==========================================================================
+    MODEL_CONFIG_PATH: str = "src/config/model_config.yaml"
+
+    # ==========================================================================
     # CORS Configuration
     # ==========================================================================
     CORS_ORIGINS: List[str] = ["http://localhost:3000", "http://localhost:8080"]

@@ -310,3 +310,82 @@ class TestTrainService:
             headers=user_headers,
         )
         assert response.status_code == 403
+
+    # =========================================================================
+    # Config API Tests
+    # =========================================================================
+
+    @pytest.mark.asyncio
+    async def test_get_config_success(
+        self,
+        http_client: AsyncClient,
+        train_base_url: str,
+        admin_headers: dict,
+    ):
+        """Test getting training config as JSON (admin-only)."""
+        response = await http_client.get(
+            f"{train_base_url}/config",
+            headers=admin_headers,
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert isinstance(data, dict)
+        # Structure matches model_config.yaml (minimal check)
+        assert "model" in data or "multi_model" in data or "paths" in data
+
+    @pytest.mark.asyncio
+    async def test_get_config_unauthorized(
+        self,
+        http_client: AsyncClient,
+        train_base_url: str,
+        user_headers: dict,
+    ):
+        """Test getting config as regular user (should fail)."""
+        response = await http_client.get(
+            f"{train_base_url}/config",
+            headers=user_headers,
+        )
+        assert response.status_code == 403
+
+    @pytest.mark.asyncio
+    async def test_put_config_success(
+        self,
+        http_client: AsyncClient,
+        train_base_url: str,
+        admin_headers: dict,
+    ):
+        """Test updating training config (admin-only)."""
+        # Get current config first
+        get_resp = await http_client.get(
+            f"{train_base_url}/config",
+            headers=admin_headers,
+        )
+        assert get_resp.status_code == 200
+        config = get_resp.json()
+        # Minimal update (e.g. change a safe field)
+        config["model"] = config.get("model") or {}
+        config["model"]["name"] = config["model"].get("name") or "XGBoost Baseline"
+        put_resp = await http_client.put(
+            f"{train_base_url}/config",
+            json=config,
+            headers=admin_headers,
+        )
+        assert put_resp.status_code == 200
+        data = put_resp.json()
+        assert isinstance(data, dict)
+        assert data.get("model", {}).get("name") == config["model"]["name"]
+
+    @pytest.mark.asyncio
+    async def test_put_config_unauthorized(
+        self,
+        http_client: AsyncClient,
+        train_base_url: str,
+        user_headers: dict,
+    ):
+        """Test updating config as regular user (should fail)."""
+        response = await http_client.put(
+            f"{train_base_url}/config",
+            json={"model": {"type": "xgboost", "name": "Test"}},
+            headers=user_headers,
+        )
+        assert response.status_code == 403
