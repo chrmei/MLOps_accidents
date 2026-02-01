@@ -7,6 +7,7 @@
 #   - data:    Data preprocessing service (port 8001)
 #   - train:   Model training service (port 8002)
 #   - predict: Prediction service (port 8003)
+#   - docs:    OpenAPI aggregator - unified /docs and /openapi.json (port 8010)
 #   - test:    API endpoint test service (profile: test)
 #
 # Development:
@@ -42,6 +43,8 @@ services:
       train:
         condition: service_healthy
       predict:
+        condition: service_healthy
+      docs:
         condition: service_healthy
     networks:
       - mlops-network
@@ -203,6 +206,40 @@ services:
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8003/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # ===========================================================================
+  # Docs Service - Unified OpenAPI /docs and /openapi.json
+  # ===========================================================================
+  docs:
+    build:
+      context: .
+      dockerfile: ./services/Dockerfile.python
+      target: docs_service
+    container_name: mlops-docs-service
+    environment:
+      - SERVICE_NAME=docs-service
+      - PYTHONUNBUFFERED=1
+      - PYTHONWARNINGS=ignore
+    ports:
+      - "8010:8010"
+    networks:
+      - mlops-network
+    restart: unless-stopped
+    depends_on:
+      auth:
+        condition: service_healthy
+      data:
+        condition: service_healthy
+      train:
+        condition: service_healthy
+      predict:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8010/health"]
       interval: 30s
       timeout: 10s
       retries: 3
