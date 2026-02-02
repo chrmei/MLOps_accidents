@@ -269,8 +269,8 @@ async def admin_token(
             assert "access_token" in data
             return data["access_token"]
         
-        # If 503 or 502 (service unavailable), wait and retry
-        if response.status_code in (502, 503) and attempt < max_retries - 1:
+        # If 503, 502 (service unavailable) or 429 (rate limit), wait and retry
+        if response.status_code in (502, 503, 429) and attempt < max_retries - 1:
             await asyncio.sleep(retry_delay)
             continue
         

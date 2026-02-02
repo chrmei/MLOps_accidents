@@ -8,6 +8,7 @@ Provides:
 - Role-based access control decorators
 """
 
+import uuid
 from datetime import datetime, timedelta
 from typing import Annotated, Optional
 
@@ -131,7 +132,7 @@ def create_access_token(
             minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES
         )
 
-    to_encode.update({"exp": expire, "type": "access"})
+    to_encode.update({"exp": expire, "type": "access", "jti": str(uuid.uuid4())})
     encoded_jwt = jwt.encode(
         to_encode,
         settings.JWT_SECRET_KEY,
@@ -161,7 +162,7 @@ def create_refresh_token(
     else:
         expire = datetime.utcnow() + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
 
-    to_encode.update({"exp": expire, "type": "refresh"})
+    to_encode.update({"exp": expire, "type": "refresh", "jti": str(uuid.uuid4())})
     encoded_jwt = jwt.encode(
         to_encode,
         settings.JWT_SECRET_KEY,
