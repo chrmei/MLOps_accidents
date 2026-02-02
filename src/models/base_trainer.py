@@ -97,7 +97,10 @@ class BaseTrainer(ABC):
                 "Please run feature engineering step first."
             )
         
-        df_features = pd.read_csv(self.features_path)
+        df_features = pd.read_csv(
+            self.features_path,
+            on_bad_lines="warn",
+        )
         
         if "grav" not in df_features.columns:
             raise ValueError("Target column 'grav' not found in features file")
