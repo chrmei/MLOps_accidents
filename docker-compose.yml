@@ -253,6 +253,25 @@ services:
       start_period: 60s
 
   # ===========================================================================
+  # Streamlit Dashboard - Control Center UI
+  # ===========================================================================
+  streamlit:
+    build:
+      context: .
+      dockerfile: services/dashboard/Dockerfile
+    container_name: mlops-dashboard
+    environment:
+      - API_BASE_URL=http://nginx:80
+      - SESSION_EXPIRE_MINUTES=30
+    ports:
+      - "8501:8501"
+    networks:
+      - mlops-network
+    depends_on:
+      - nginx
+    restart: unless-stopped
+
+  # ===========================================================================
   # Test Service - API Endpoint Testing
   # ===========================================================================
   test:

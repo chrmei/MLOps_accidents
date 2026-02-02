@@ -14,6 +14,7 @@ from services.common.auth import (
     create_access_token,
     create_refresh_token,
     create_user,
+    delete_user,
     get_all_users,
     revoke_token,
     security,
@@ -191,3 +192,15 @@ async def create_new_user(
         role=new_user.role,
         is_active=new_user.is_active,
     )
+
+
+@router.delete("/users/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_user_by_id(user_id: int, current_user: AdminUser):
+    """Delete a user by id (admin-only). Cannot delete the default admin."""
+    deleted = delete_user(user_id)
+    if not deleted:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found",
+        )
+    return None

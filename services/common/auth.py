@@ -509,6 +509,47 @@ def check_permission(user: User, required_role: UserRole) -> bool:
     return role_hierarchy.get(user.role, 0) >= role_hierarchy.get(required_role, 0)
 
 
+def get_user_by_id(user_id: int) -> Optional[UserInDB]:
+    """
+    Get a user by id (admin function).
+
+    Args:
+        user_id: The user id to look up
+
+    Returns:
+        UserInDB if found, None otherwise
+    """
+    for u in _fake_users_db.values():
+        if u.id == user_id:
+            return u
+    return None
+
+
+def delete_user(user_id: int) -> bool:
+    """
+    Delete a user by id (admin-only). Cannot delete the default admin.
+
+    Args:
+        user_id: The user id to delete
+
+    Returns:
+        True if user was deleted, False if not found
+
+    Raises:
+        HTTPException: If trying to delete the default admin user
+    """
+    user = get_user_by_id(user_id)
+    if not user:
+        return False
+    if user.username == settings.ADMIN_USERNAME:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Cannot delete the default admin user",
+        )
+    del _fake_users_db[user.username]
+    return True
+
+
 def get_all_users() -> list[User]:
     """
     Get all users (admin function).
