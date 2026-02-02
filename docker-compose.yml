@@ -117,6 +117,7 @@ services:
       - MLFLOW_TRACKING_PASSWORD=${MLFLOW_TRACKING_PASSWORD}
       - DATA_DIR=/app/data
       - MODELS_DIR=/app/models
+      - MODEL_CONFIG_PATH=/app/data/model_config.yaml
       - PYTHONUNBUFFERED=1
       - PYTHONWARNINGS=ignore
     volumes:

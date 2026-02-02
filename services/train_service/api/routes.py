@@ -6,7 +6,8 @@ import asyncio
 import json
 import logging
 import os
-from typing import List, Optional
+from pathlib import Path
+from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
@@ -16,6 +17,7 @@ from services.common.job_store import JobStatus as StoreJobStatus
 from services.common.job_store import JobType, job_store
 from services.common.models import JobResponse, JobStatus as ApiJobStatus
 
+from ..core.config_io import ensure_config_exists, load_config, save_config
 from ..core.trainer import run_training
 from .schemas import TrainRequest
 
@@ -51,13 +53,15 @@ async def _run_training_job(job_id: str, request: TrainRequest, settings: Settin
         message="Training started",
     )
 
+    config_path = request.config_path or settings.MODEL_CONFIG_PATH
     try:
         result = await asyncio.to_thread(
             run_training,
             request.models,
             request.grid_search,
             request.compare,
-            request.config_path,
+            config_path,
+            request.config,
         )
         await job_store.update_job(
             job_id,
@@ -141,3 +145,54 @@ async def get_model_metrics(model_type: str, current_user: AdminUser, settings: 
         metrics = json.load(f)
 
     return {"model_type": model_type, "metrics": metrics}
+
+
+# -----------------------------------------------------------------------------
+# Config API (structure matches src/config/model_config.yaml; Option A: dict)
+# -----------------------------------------------------------------------------
+
+
+@router.get("/config", response_model=Dict[str, Any])
+async def get_config(
+    current_user: AdminUser,
+    settings: SettingsDep,
+    path: Optional[str] = Query(None, description="Override config file path (default: MODEL_CONFIG_PATH)"),
+):
+    """Return current training config as JSON (admin-only)."""
+    if path is None:
+        ensure_config_exists(settings.MODEL_CONFIG_PATH)
+        config_path = settings.MODEL_CONFIG_PATH
+    else:
+        config_path = path
+    if not Path(config_path).exists():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Config file not found: {config_path}",
+        )
+    try:
+        return load_config(config_path)
+    except (OSError, ValueError) as e:
+        logger.exception("Failed to load config from %s", config_path)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to load config: {e}",
+        ) from e
+
+
+@router.put("/config", response_model=Dict[str, Any])
+async def put_config(
+    body: Dict[str, Any],
+    current_user: AdminUser,
+    settings: SettingsDep,
+):
+    """Update training config from JSON body; persists to MODEL_CONFIG_PATH (admin-only)."""
+    config_path = settings.MODEL_CONFIG_PATH
+    try:
+        save_config(config_path, body)
+        return load_config(config_path)
+    except OSError as e:
+        logger.exception("Failed to write config to %s", config_path)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to write config: {e}",
+        ) from e

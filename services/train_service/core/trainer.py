@@ -24,6 +24,7 @@ def run_training(
     grid_search: Optional[bool] = None,
     compare: bool = True,
     config_path: str = "src/config/model_config.yaml",
+    config_dict: Optional[Dict] = None,
 ) -> Dict:
     """
     Run the multi-model training workflow programmatically.
@@ -32,13 +33,15 @@ def run_training(
         model_types: Optional list of model identifiers to train. Defaults to enabled models in config.
         grid_search: Enable hyperparameter search. Defaults to config value.
         compare: Generate comparison report and pick best model.
-        config_path: Path to the training configuration YAML.
+        config_path: Path to the training configuration YAML (ignored when config_dict is provided).
+        config_dict: Optional inline config for this run only; when set, config_path is not read.
 
     Returns:
         Dictionary containing training results and optional comparison metadata.
     """
-    with open(config_path, "r", encoding="utf-8") as f:
-        config_dict = yaml.safe_load(f)
+    if config_dict is None:
+        with open(config_path, "r", encoding="utf-8") as f:
+            config_dict = yaml.safe_load(f)
 
     # Determine model list
     if model_types:
