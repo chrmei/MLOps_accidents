@@ -66,7 +66,7 @@ def render():
     st.subheader("Add user")
     with st.form("add_user"):
         username = st.text_input("Username")
-        password = st.text_input("Password", type="password")
+        password = st.text_input("Password", type="password", autocomplete="new-password")
         email = st.text_input("Email (optional)")
         full_name = st.text_input("Full name (optional)")
         role = st.selectbox("Role", ["user", "admin"])

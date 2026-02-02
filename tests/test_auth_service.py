@@ -523,6 +523,70 @@ class TestAuthService:
         assert response.status_code == 403
 
     # =========================================================================
+    # Password reset
+    # =========================================================================
+
+    @pytest.mark.asyncio
+    async def test_forgot_password_returns_200(
+        self, http_client: AsyncClient, auth_base_url: str, admin_credentials: dict
+    ):
+        """Forgot password returns 200 and same message (no user enumeration)."""
+        response = await http_client.post(
+            f"{auth_base_url}/forgot-password",
+            json={"username": admin_credentials["username"]},
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert "message" in data
+
+    @pytest.mark.asyncio
+    async def test_reset_password_invalid_token(
+        self, http_client: AsyncClient, auth_base_url: str
+    ):
+        """Reset password with invalid token returns 400."""
+        response = await http_client.post(
+            f"{auth_base_url}/reset-password",
+            json={"token": "invalid-token", "new_password": "NewSecure@123"},
+        )
+        assert response.status_code == 400
+        assert "invalid" in response.json().get("detail", "").lower() or "expired" in response.json().get("detail", "").lower()
+
+    @pytest.mark.asyncio
+    async def test_forgot_and_reset_password_flow(
+        self, http_client: AsyncClient, auth_base_url: str, admin_credentials: dict
+    ):
+        """Request reset, then reset with token (when dev token in response is enabled)."""
+        # Request reset
+        r1 = await http_client.post(
+            f"{auth_base_url}/forgot-password",
+            json={"username": admin_credentials["username"]},
+        )
+        assert r1.status_code == 200
+        data = r1.json()
+        token = data.get("reset_token")
+        # If token not in response (prod mode), skip reset step
+        if not token:
+            return
+        # Reset with token
+        r2 = await http_client.post(
+            f"{auth_base_url}/reset-password",
+            json={"token": token, "new_password": "NewSecure@123"},
+        )
+        assert r2.status_code == 204
+        # Login with new password
+        r3 = await http_client.post(
+            f"{auth_base_url}/login",
+            json={"username": admin_credentials["username"], "password": "NewSecure@123"},
+        )
+        assert r3.status_code == 200
+        # Restore original password for other tests (optional)
+        from services.common.auth import create_password_reset_token, update_user_password
+        from services.common.config import settings
+        tok2 = create_password_reset_token(admin_credentials["username"])
+        if tok2:
+            update_user_password(admin_credentials["username"], settings.ADMIN_PASSWORD)
+
+    # =========================================================================
     # Request body size (auth service 64KB limit)
     # =========================================================================
 

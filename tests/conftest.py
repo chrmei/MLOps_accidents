@@ -216,19 +216,19 @@ async def http_client() -> AsyncGenerator[AsyncClient, None]:
 
 @pytest.fixture
 def admin_credentials() -> dict:
-    """Default admin credentials for testing."""
+    """Admin credentials for testing (from env: ADMIN_USERNAME, ADMIN_PASSWORD)."""
     return {
-        "username": os.getenv("ADMIN_USERNAME", "admin"),
-        "password": os.getenv("ADMIN_PASSWORD", "Mlops@Admin2024!Secure"),
+        "username": os.getenv("ADMIN_USERNAME", ""),
+        "password": os.getenv("ADMIN_PASSWORD", ""),
     }
 
 
 @pytest.fixture
 def regular_user_credentials() -> dict:
-    """Regular user credentials for testing."""
+    """Regular user credentials for testing (from env: TEST_USER_USERNAME, TEST_USER_PASSWORD)."""
     return {
-        "username": os.getenv("TEST_USER_USERNAME", "testuser"),
-        "password": os.getenv("TEST_USER_PASSWORD", "TestUser@123"),
+        "username": os.getenv("TEST_USER_USERNAME", ""),
+        "password": os.getenv("TEST_USER_PASSWORD", ""),
     }
 
 

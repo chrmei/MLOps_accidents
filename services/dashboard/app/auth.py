@@ -67,3 +67,49 @@ def is_admin(role: str) -> bool:
 
 def session_expired(expires_at: float) -> bool:
     return time.time() >= expires_at
+
+
+def forgot_password(username: str) -> tuple[bool, Any]:
+    """
+    POST /api/v1/auth/forgot-password.
+    Returns (True, data_dict with optional reset_token) on success, (False, error_message) on failure.
+    """
+    try:
+        with httpx.Client(base_url=get_api_base(), timeout=15.0) as client:
+            r = client.post(
+                "/api/v1/auth/forgot-password",
+                json={"username": username},
+            )
+            if r.status_code != 200:
+                detail = "Request failed"
+                try:
+                    detail = r.json().get("detail", detail)
+                except Exception:
+                    pass
+                return False, detail
+            return True, r.json()
+    except Exception as e:
+        return False, str(e)
+
+
+def reset_password(token: str, new_password: str) -> tuple[bool, Any]:
+    """
+    POST /api/v1/auth/reset-password.
+    Returns (True, None) on success, (False, error_message) on failure.
+    """
+    try:
+        with httpx.Client(base_url=get_api_base(), timeout=15.0) as client:
+            r = client.post(
+                "/api/v1/auth/reset-password",
+                json={"token": token, "new_password": new_password},
+            )
+            if r.status_code == 204:
+                return True, None
+            detail = "Reset failed"
+            try:
+                detail = r.json().get("detail", detail)
+            except Exception:
+                pass
+            return False, detail
+    except Exception as e:
+        return False, str(e)

@@ -54,10 +54,27 @@ def render():
 
     st.markdown("---")
 
+    page_size = st.session_state.get("data_ops_page_size", 10)
+    page = st.session_state.get("data_ops_page", 0)
+    offset = page * page_size
+
     @st.fragment(run_every=4)
     def job_logs_section():
         st.subheader("Job logs")
-        # Hide expander border for job log rows
+        # Page size selector (persisted in session)
+        col_size, col_nav = st.columns([1, 3])
+        with col_size:
+            new_size = st.selectbox(
+                "Rows per page",
+                options=[10, 20, 50, 100],
+                index=[10, 20, 50, 100].index(page_size),
+                key="data_ops_page_size_select",
+            )
+            if new_size != page_size:
+                st.session_state["data_ops_page_size"] = new_size
+                st.session_state["data_ops_page"] = 0
+                st.rerun()
+
         st.markdown(
             """
             <style>
@@ -72,17 +89,19 @@ def render():
             """,
             unsafe_allow_html=True,
         )
-        resp = get("/api/v1/data/jobs")
+        resp = get("/api/v1/data/jobs", params={"limit": page_size, "offset": offset})
         if resp is None:
             st.warning("Not authenticated.")
         elif resp.status_code != 200:
             st.error("Failed to load jobs.")
         else:
-            jobs = resp.json()
-            if not jobs:
+            data = resp.json()
+            items = data.get("items") or []
+            total = data.get("total", 0)
+            if not items:
                 st.info("No jobs yet.")
             else:
-                for j in jobs[:20]:
+                for j in items:
                     msg = j.get("message") or ""
                     prog = j.get("progress")
                     prog_str = f" · {prog:.0f}%" if prog is not None else ""
@@ -100,6 +119,18 @@ def render():
                         result = j.get("result")
                         if result:
                             st.json(result)
+                # Pagination nav
+                num_pages = max(1, (total + page_size - 1) // page_size)
+                st.caption(f"Showing {offset + 1}–{min(offset + len(items), total)} of {total} jobs (newest first)")
+                prev_col, _, next_col = st.columns([1, 2, 1])
+                with prev_col:
+                    if page > 0 and st.button("← Previous", key="data_ops_prev"):
+                        st.session_state["data_ops_page"] = page - 1
+                        st.rerun()
+                with next_col:
+                    if page < num_pages - 1 and st.button("Next →", key="data_ops_next"):
+                        st.session_state["data_ops_page"] = page + 1
+                        st.rerun()
 
     job_logs_section()
 

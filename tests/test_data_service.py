@@ -235,14 +235,16 @@ class TestDataService:
         data_base_url: str,
         admin_headers: dict,
     ):
-        """Test listing all jobs."""
+        """Test listing all jobs (paginated response)."""
         response = await http_client.get(
             f"{data_base_url}/jobs",
             headers=admin_headers,
         )
         assert response.status_code == 200
         data = response.json()
-        assert isinstance(data, list)
+        assert isinstance(data, dict)
+        assert "items" in data and "total" in data
+        assert isinstance(data["items"], list)
 
     @pytest.mark.asyncio
     async def test_list_jobs_with_filters(
@@ -259,9 +261,11 @@ class TestDataService:
         )
         assert response.status_code == 200
         data = response.json()
-        assert isinstance(data, list)
+        assert isinstance(data, dict)
+        assert "items" in data and "total" in data
+        items = data["items"]
         # All returned jobs should be preprocessing jobs
-        for job in data:
+        for job in items:
             assert job["job_type"] == "preprocessing"
 
         # Filter by status
@@ -271,7 +275,9 @@ class TestDataService:
         )
         assert response.status_code == 200
         data = response.json()
-        assert isinstance(data, list)
+        assert isinstance(data, dict)
+        assert "items" in data and "total" in data
+        assert isinstance(data["items"], list)
 
     @pytest.mark.asyncio
     async def test_list_jobs_unauthorized(

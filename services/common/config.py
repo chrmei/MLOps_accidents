@@ -17,7 +17,7 @@ class Settings(BaseSettings):
     # ==========================================================================
     # JWT Configuration
     # ==========================================================================
-    JWT_SECRET_KEY: str = "CHANGE_ME_IN_PRODUCTION_USE_STRONG_SECRET_KEY"
+    JWT_SECRET_KEY: str = ""  # Required: set in .env (e.g. openssl rand -hex 32)
     JWT_ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 600  # 10 hours
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
@@ -79,9 +79,9 @@ class Settings(BaseSettings):
     # ==========================================================================
     # Initial Admin User
     # ==========================================================================
-    ADMIN_USERNAME: str = "admin"
-    ADMIN_PASSWORD: str = "Mlops@Admin2024!Secure"
-    ADMIN_EMAIL: str = "admin@example.com"
+    ADMIN_USERNAME: str = ""  # Required: set in .env
+    ADMIN_PASSWORD: str = ""  # Required: set in .env
+    ADMIN_EMAIL: str = ""  # Required: set in .env
 
     # ==========================================================================
     # Auth rate limits (per-username, in-memory; multi-instance needs Redis)
@@ -96,6 +96,11 @@ class Settings(BaseSettings):
     # ==========================================================================
     MAX_FAILED_LOGIN_ATTEMPTS: int = 5
     LOGIN_LOCKOUT_MINUTES: int = 15
+
+    # ==========================================================================
+    # Password reset (dev: return token in response when no email configured)
+    # ==========================================================================
+    DEV_PASSWORD_RESET_TOKEN_IN_RESPONSE: bool = False
 
     class Config:
         """Pydantic settings configuration."""

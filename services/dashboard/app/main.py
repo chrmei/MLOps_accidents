@@ -4,6 +4,7 @@ import streamlit as st
 from app.utils.session import ensure_authenticated
 from app.components.sidebar import PAGE_KEY, render_sidebar
 from app.views.login import render_login
+from app.views.forgot_password import render as render_forgot_password
 from app.views.user_prediction import render as render_prediction
 from app.views.admin_data_ops import render as render_data_ops
 from app.views.admin_ml_ops import render as render_ml_ops
@@ -17,8 +18,24 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
+# Hide "Show password" eye icon globally so passwords are never revealed
+st.markdown(
+    """
+    <style>
+    [data-testid="stTextInput"] button[title="Show password text"],
+    [data-testid="stTextInput"] button[aria-label="Show password text"] {
+        display: none !important;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
 if not ensure_authenticated():
-    render_login()
+    if st.session_state.get("show_forgot_password"):
+        render_forgot_password()
+    else:
+        render_login()
 else:
     render_sidebar()
     page = st.session_state.get(PAGE_KEY, "prediction")

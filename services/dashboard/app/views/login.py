@@ -18,8 +18,12 @@ def render_login():
     st.markdown("Sign in to access the Control Center.")
     with st.form("login_form"):
         username = st.text_input("Username", key="login_username")
-        password = st.text_input("Password", type="password", key="login_password")
+        password = st.text_input("Password", type="password", key="login_password", autocomplete="current-password")
         submitted = st.form_submit_button("Sign in")
+    st.markdown("---")
+    if st.button("Forgot password?", key="login_forgot"):
+        st.session_state["show_forgot_password"] = True
+        st.rerun()
     if not submitted:
         return
     if not username or not password:

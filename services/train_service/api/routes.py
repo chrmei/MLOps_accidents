@@ -16,7 +16,7 @@ from services.common.dependencies import AdminUser, SettingsDep
 from services.common.job_runner import run_sync_with_streaming_logs
 from services.common.job_store import JobStatus as StoreJobStatus
 from services.common.job_store import JobType, job_store
-from services.common.models import JobResponse, JobStatus as ApiJobStatus
+from services.common.models import JobResponse, JobsListResponse, JobStatus as ApiJobStatus
 
 from ..core.config_io import ensure_config_exists, load_config, save_config
 from ..core.trainer import run_training
@@ -134,22 +134,45 @@ async def get_job_status(job_id: str, current_user: AdminUser):
     return _job_to_response(job)
 
 
-@router.get("/jobs", response_model=List[JobResponse])
+_JOB_PAGE_SIZES = (10, 20, 50, 100)
+
+
+@router.get("/jobs", response_model=JobsListResponse)
 async def list_jobs(
     current_user: AdminUser,
-    job_type: Optional[str] = Query(None, description="Filter by job type"),
+    job_type: Optional[str] = Query(None, description="Filter by job type (comma-separated for multiple)"),
     status_filter: Optional[ApiJobStatus] = Query(None, alias="status", description="Filter by job status"),
+    limit: int = Query(10, ge=1, le=100, description="Page size (10, 20, 50, or 100)"),
+    offset: int = Query(0, ge=0, description="Number of jobs to skip"),
 ):
+    if limit not in _JOB_PAGE_SIZES:
+        limit = 10
     status_value = None
     if status_filter:
         status_value = StoreJobStatus(status_filter.value)
 
+    job_types = None
+    if job_type:
+        job_types = [j.strip() for j in job_type.split(",") if j.strip()]
+    else:
+        job_types = [JobType.TRAINING.value]
+
     jobs = await job_store.list_jobs(
-        job_type=job_type,
+        job_type=job_types,
+        status=status_value,
+        created_by=current_user.username,
+        limit=limit,
+        offset=offset,
+    )
+    total = await job_store.count_jobs(
+        job_type=job_types,
         status=status_value,
         created_by=current_user.username,
     )
-    return [_job_to_response(job) for job in jobs]
+    return JobsListResponse(
+        items=[_job_to_response(job) for job in jobs],
+        total=total,
+    )
 
 
 @router.get("/metrics/{model_type}")
