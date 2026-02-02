@@ -76,6 +76,34 @@ def get_password_hash(password: str) -> str:
 
 
 # =============================================================================
+# Token revocation (blocklist)
+# =============================================================================
+
+_revoked_tokens: set[str] = set()
+
+
+def revoke_token(token: str) -> None:
+    """Add token to revocation blocklist. Skips if token is already expired."""
+    try:
+        payload = jwt.decode(
+            token,
+            settings.JWT_SECRET_KEY,
+            algorithms=[settings.JWT_ALGORITHM],
+        )
+        exp = payload.get("exp")
+        if exp and datetime.utcfromtimestamp(exp) <= datetime.utcnow():
+            return  # Do not add expired tokens to blocklist
+    except Exception:
+        pass  # Invalid token: still add so it is never accepted
+    _revoked_tokens.add(token)
+
+
+def is_revoked(token: str) -> bool:
+    """Return True if token has been revoked (e.g. after logout)."""
+    return token in _revoked_tokens
+
+
+# =============================================================================
 # Token Functions
 # =============================================================================
 
@@ -161,6 +189,9 @@ def verify_token(token: str, token_type: str = "access") -> TokenData:
         detail="Could not validate credentials",
         headers={"WWW-Authenticate": "Bearer"},
     )
+
+    if is_revoked(token):
+        raise credentials_exception
 
     try:
         payload = jwt.decode(

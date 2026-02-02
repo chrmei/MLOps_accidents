@@ -25,7 +25,7 @@ scripts
 Makefile
 dvc.yaml
 dvc.lock
-uv.lock
+# uv.lock included so Dockerfile COPY can use it for reproducible installs
 doc/**/*.md
 .python-version
 .tool-versions
