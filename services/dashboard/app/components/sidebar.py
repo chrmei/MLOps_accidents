@@ -25,6 +25,11 @@ def render_sidebar():
         if st.sidebar.button("ML Ops", key="nav_ml", use_container_width=True):
             st.session_state[PAGE_KEY] = "ml_ops"
             st.rerun()
+        st.sidebar.link_button(
+            "Ml Flow",
+            "https://dagshub.com/chrmei/MLOps_accidents.mlflow/#/experiments/0/runs?searchFilter=&orderByKey=metrics.%60f1_score%60&orderByAsc=false&startTime=ALL&lifecycleFilter=Active&modelVersionFilter=All+Runs&datasetsFilter=W10%3D",
+            use_container_width=True,
+        )
         if st.sidebar.button("User Management", key="nav_users", use_container_width=True):
             st.session_state[PAGE_KEY] = "user_mgmt"
             st.rerun()

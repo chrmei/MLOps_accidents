@@ -52,6 +52,7 @@ class Job:
     error: Optional[str] = None
     created_by: Optional[str] = None
     parameters: Optional[Dict[str, Any]] = None
+    logs: List[str] = field(default_factory=list)
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert job to dictionary for API responses."""
@@ -67,6 +68,7 @@ class Job:
             "result": self.result,
             "error": self.error,
             "created_by": self.created_by,
+            "logs": self.logs,
         }
 
 
@@ -147,6 +149,7 @@ class JobStore:
         message: Optional[str] = None,
         result: Optional[Dict[str, Any]] = None,
         error: Optional[str] = None,
+        logs: Optional[List[str]] = None,
     ) -> Optional[Job]:
         """
         Update a job's status and/or progress.
@@ -158,6 +161,7 @@ class JobStore:
             message: Status message (optional)
             result: Job result data (optional)
             error: Error message if failed (optional)
+            logs: Full list of log lines (optional)
 
         Returns:
             The updated Job if found, None otherwise
@@ -185,6 +189,9 @@ class JobStore:
 
             if error is not None:
                 job.error = error
+
+            if logs is not None:
+                job.logs = logs
 
             return job
 

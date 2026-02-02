@@ -2,6 +2,8 @@
 Train service FastAPI application.
 """
 
+import logging
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -12,6 +14,8 @@ from .api.routes import router as train_router
 from .core.config_io import ensure_config_exists
 
 app = FastAPI(title="MLOps Train Service", version="0.1.0")
+
+logging.getLogger().setLevel(logging.INFO)
 
 
 @app.on_event("startup")

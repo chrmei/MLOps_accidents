@@ -11,6 +11,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from services.common.config import Settings
 from services.common.dependencies import AdminUser, SettingsDep
+from services.common.job_runner import run_sync_with_streaming_logs
 from services.common.job_store import JobStatus as StoreJobStatus
 from services.common.job_store import JobType, job_store
 from services.common.models import JobResponse, JobStatus as ApiJobStatus
@@ -40,7 +41,12 @@ def _job_to_response(job) -> JobResponse:
         result=job.result,
         error=job.error,
         progress=job.progress,
+        message=job.message or None,
+        logs=job.logs if job.logs else None,
     )
+
+
+_DATA_LOG_PREFIXES = ("src.", "services.data_service.")
 
 
 async def _run_preprocess_job(job_id: str, request: PreprocessRequest, settings: Settings):
@@ -54,16 +60,15 @@ async def _run_preprocess_job(job_id: str, request: PreprocessRequest, settings:
         message="Preprocessing started",
     )
 
-    try:
-        result = await asyncio.to_thread(preprocess_data, raw_dir, preprocessed_dir)
-        await job_store.update_job(
-            job_id,
-            status=StoreJobStatus.COMPLETED,
-            progress=100.0,
-            message="Preprocessing completed",
-            result=result,
-        )
-    except Exception as exc:  # pylint: disable=broad-except
+    result, exc = await run_sync_with_streaming_logs(
+        job_id,
+        preprocess_data,
+        raw_dir,
+        preprocessed_dir,
+        log_prefixes=_DATA_LOG_PREFIXES,
+        update_interval_seconds=2.0,
+    )
+    if exc is not None:
         logger.exception("Preprocessing job failed")
         await job_store.update_job(
             job_id,
@@ -71,6 +76,14 @@ async def _run_preprocess_job(job_id: str, request: PreprocessRequest, settings:
             progress=100.0,
             message="Preprocessing failed",
             error=str(exc),
+        )
+    else:
+        await job_store.update_job(
+            job_id,
+            status=StoreJobStatus.COMPLETED,
+            progress=100.0,
+            message="Preprocessing completed",
+            result=result,
         )
 
 
@@ -86,23 +99,18 @@ async def _run_feature_job(job_id: str, request: BuildFeaturesRequest, settings:
         message="Feature engineering started",
     )
 
-    try:
-        result = await asyncio.to_thread(
-            build_feature_dataset,
-            interim_path,
-            preprocessed_dir,
-            models_dir,
-            request.cyclic_encoding,
-            request.interactions,
-        )
-        await job_store.update_job(
-            job_id,
-            status=StoreJobStatus.COMPLETED,
-            progress=100.0,
-            message="Feature engineering completed",
-            result=result,
-        )
-    except Exception as exc:  # pylint: disable=broad-except
+    result, exc = await run_sync_with_streaming_logs(
+        job_id,
+        build_feature_dataset,
+        interim_path,
+        preprocessed_dir,
+        models_dir,
+        request.cyclic_encoding,
+        request.interactions,
+        log_prefixes=_DATA_LOG_PREFIXES,
+        update_interval_seconds=2.0,
+    )
+    if exc is not None:
         logger.exception("Feature job failed")
         await job_store.update_job(
             job_id,
@@ -110,6 +118,14 @@ async def _run_feature_job(job_id: str, request: BuildFeaturesRequest, settings:
             progress=100.0,
             message="Feature engineering failed",
             error=str(exc),
+        )
+    else:
+        await job_store.update_job(
+            job_id,
+            status=StoreJobStatus.COMPLETED,
+            progress=100.0,
+            message="Feature engineering completed",
+            result=result,
         )
 
 

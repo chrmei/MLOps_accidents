@@ -1,4 +1,4 @@
-"""Admin ML Ops: trigger training, view config and metrics."""
+"""Admin ML Ops: trigger training, view and edit config."""
 import streamlit as st
 import json
 
@@ -7,7 +7,7 @@ from ..components.api_client import get, post, put
 
 def render():
     st.title("ML Ops")
-    st.markdown("Trigger training; view and edit config; view metrics.")
+    st.markdown("Trigger training; view and edit config.")
 
     if st.button("Start Training", type="primary"):
         resp = post("/api/v1/train/", json={"compare": True})
@@ -21,23 +21,6 @@ def render():
                 st.error(resp.json().get("detail", "Failed"))
             except Exception:
                 st.error("Failed")
-
-    st.markdown("---")
-    st.subheader("Training jobs")
-    resp = get("/api/v1/train/jobs")
-    if resp is None:
-        st.warning("Not authenticated.")
-    elif resp.status_code == 200:
-        jobs = resp.json()
-        if not jobs:
-            st.info("No jobs yet.")
-        else:
-            for j in jobs[:20]:
-                st.markdown(
-                    f"**{j.get('job_id', '')}** | {j.get('status', '')} | {j.get('created_at', '')}"
-                )
-                if j.get("error"):
-                    st.caption(f"Error: {j['error']}")
 
     st.markdown("---")
     st.subheader("Config")
@@ -60,12 +43,55 @@ def render():
         st.warning("Could not load config.")
 
     st.markdown("---")
-    st.subheader("Metrics")
-    model_type = st.selectbox("Model type", ["lightgbm", "xgboost", "random_forest", "logistic_regression"])
-    if st.button("Load metrics"):
-        resp = get(f"/api/v1/train/metrics/{model_type}")
-        if resp and resp.status_code == 200:
-            data = resp.json()
-            st.json(data.get("metrics", {}))
+    st.subheader("Training jobs")
+
+    @st.fragment(run_every=4)
+    def training_jobs_section():
+        st.markdown(
+            """
+            <style>
+            div[data-testid="stExpander"] {
+                border: none !important;
+                box-shadow: none !important;
+            }
+            div[data-testid="stExpander"] > div {
+                border: none !important;
+            }
+            </style>
+            """,
+            unsafe_allow_html=True,
+        )
+        resp = get("/api/v1/train/jobs")
+        if resp is None:
+            st.warning("Not authenticated.")
+        elif resp.status_code != 200:
+            try:
+                detail = resp.json().get("detail", resp.text or "Failed to load jobs.")
+                st.error(detail)
+            except Exception:
+                st.error("Failed to load training jobs.")
         else:
-            st.info("No metrics for this model.")
+            jobs = resp.json()
+            if not jobs:
+                st.info("No training jobs yet. Use **Start Training** above to run one.")
+            else:
+                for j in jobs[:20]:
+                    msg = j.get("message") or ""
+                    prog = j.get("progress")
+                    prog_str = f" · {prog:.0f}%" if prog is not None else ""
+                    line_text = (
+                        f"{j.get('job_type', '')} | {j.get('status', '')} | "
+                        f"{j.get('created_at', '')} | {j.get('job_id', '')}"
+                        + (f" | {msg}{prog_str}" if msg or prog_str else "")
+                    )
+                    with st.expander(line_text, expanded=False):
+                        if j.get("error"):
+                            st.caption(f"**Error:** {j['error']}")
+                        logs = j.get("logs") or []
+                        if logs:
+                            st.text("\n".join(logs))
+                        result = j.get("result")
+                        if result:
+                            st.json(result)
+
+    training_jobs_section()

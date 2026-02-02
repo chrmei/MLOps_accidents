@@ -2,6 +2,8 @@
 Data service FastAPI application.
 """
 
+import logging
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -11,6 +13,8 @@ from services.common.models import HealthResponse
 from .api.routes import router as data_router
 
 app = FastAPI(title="MLOps Data Service", version="0.1.0")
+
+logging.getLogger().setLevel(logging.INFO)
 
 app.add_middleware(
     CORSMiddleware,

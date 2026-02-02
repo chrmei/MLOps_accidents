@@ -16,7 +16,7 @@ def render():
                 st.error("Not authenticated.")
             elif resp.status_code == 202:
                 job = resp.json()
-                st.success(f"Job started: {job.get('job_id', '')}")
+                st.session_state["data_ops_job_started"] = f"Job started: {job.get('job_id', '')}"
             else:
                 try:
                     st.error(resp.json().get("detail", "Failed"))
@@ -29,7 +29,7 @@ def render():
                 st.error("Not authenticated.")
             elif resp.status_code == 202:
                 job = resp.json()
-                st.success(f"Job started: {job.get('job_id', '')}")
+                st.session_state["data_ops_job_started"] = f"Job started: {job.get('job_id', '')}"
             else:
                 try:
                     st.error(resp.json().get("detail", "Failed"))
@@ -37,21 +37,72 @@ def render():
                     st.error("Failed")
 
     st.markdown("---")
-    st.subheader("Job logs")
-    resp = get("/api/v1/data/jobs")
-    if resp is None:
-        st.warning("Not authenticated.")
-    elif resp.status_code == 200:
-        jobs = resp.json()
-        if not jobs:
-            st.info("No jobs yet.")
+
+    expl_col1, expl_col2 = st.columns(2)
+    with expl_col1:
+        st.markdown("**Preprocessing**")
+        st.caption(
+            "Reads raw CSVs (usagers, caracteristiques, lieux, vehicules), validates and merges them, "
+            "cleans columns and target, and writes **interim_dataset.csv** for feature engineering."
+        )
+    with expl_col2:
+        st.markdown("**Feature engineering**")
+        st.caption(
+            "Loads interim_dataset.csv, builds temporal/cyclic and interaction features, "
+            "encodes labels, and saves **features.csv** and **label_encoders.joblib** for training."
+        )
+
+    st.markdown("---")
+
+    @st.fragment(run_every=4)
+    def job_logs_section():
+        st.subheader("Job logs")
+        # Hide expander border for job log rows
+        st.markdown(
+            """
+            <style>
+            div[data-testid="stExpander"] {
+                border: none !important;
+                box-shadow: none !important;
+            }
+            div[data-testid="stExpander"] > div {
+                border: none !important;
+            }
+            </style>
+            """,
+            unsafe_allow_html=True,
+        )
+        resp = get("/api/v1/data/jobs")
+        if resp is None:
+            st.warning("Not authenticated.")
+        elif resp.status_code != 200:
+            st.error("Failed to load jobs.")
         else:
-            for j in jobs[:20]:
-                st.markdown(
-                    f"**{j.get('job_id', '')}** | {j.get('job_type', '')} | "
-                    f"{j.get('status', '')} | {j.get('created_at', '')}"
-                )
-                if j.get("error"):
-                    st.caption(f"Error: {j['error']}")
-    else:
-        st.error("Failed to load jobs.")
+            jobs = resp.json()
+            if not jobs:
+                st.info("No jobs yet.")
+            else:
+                for j in jobs[:20]:
+                    msg = j.get("message") or ""
+                    prog = j.get("progress")
+                    prog_str = f" · {prog:.0f}%" if prog is not None else ""
+                    line_text = (
+                        f"{j.get('job_type', '')} | {j.get('status', '')} | "
+                        f"{j.get('created_at', '')} | {j.get('job_id', '')}"
+                        + (f" | {msg}{prog_str}" if msg or prog_str else "")
+                    )
+                    with st.expander(line_text, expanded=False):
+                        if j.get("error"):
+                            st.caption(f"**Error:** {j['error']}")
+                        logs = j.get("logs") or []
+                        if logs:
+                            st.text("\n".join(logs))
+                        result = j.get("result")
+                        if result:
+                            st.json(result)
+
+    job_logs_section()
+
+    if st.session_state.get("data_ops_job_started"):
+        st.success(st.session_state["data_ops_job_started"])
+        del st.session_state["data_ops_job_started"]

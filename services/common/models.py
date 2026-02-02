@@ -204,6 +204,8 @@ class JobResponse(BaseModel):
     result: Optional[Dict[str, Any]] = None
     error: Optional[str] = None
     progress: Optional[float] = Field(None, ge=0, le=100)
+    message: Optional[str] = None
+    logs: Optional[List[str]] = None
 
 
 # =============================================================================

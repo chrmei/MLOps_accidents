@@ -4,6 +4,30 @@ import streamlit as st
 from ..components.api_client import delete as api_delete, get, post
 
 
+def _format_api_error(detail) -> str:
+    """Turn FastAPI/Pydantic error detail into a user-friendly message."""
+    if isinstance(detail, str):
+        return detail
+    if isinstance(detail, list):
+        parts = []
+        for item in detail:
+            if not isinstance(item, dict):
+                parts.append(str(item))
+                continue
+            loc = item.get("loc", [])
+            msg = item.get("msg", "Invalid value")
+            # loc is e.g. ['body', 'password'] or ['body', 'username']
+            field = loc[-1] if len(loc) > 1 else (loc[0] if loc else "")
+            if field:
+                # Human-readable field name
+                field_name = field.replace("_", " ").strip().capitalize()
+                parts.append(f"**{field_name}**: {msg}")
+            else:
+                parts.append(msg)
+        return " — ".join(parts) if parts else "Validation failed."
+    return str(detail) if detail is not None else "Request failed."
+
+
 def render():
     st.title("User Management")
     st.markdown("List, add, and delete users (admin only).")
@@ -34,35 +58,43 @@ def render():
                         st.rerun()
                     elif r:
                         try:
-                            st.error(r.json().get("detail", "Failed"))
+                            st.error(_format_api_error(r.json().get("detail", "Failed")))
                         except Exception:
                             st.error("Failed")
 
     st.markdown("---")
     st.subheader("Add user")
     with st.form("add_user"):
-        username = st.text_input("Username", min_length=3)
-        password = st.text_input("Password", type="password", min_length=1)
+        username = st.text_input("Username")
+        password = st.text_input("Password", type="password")
         email = st.text_input("Email (optional)")
         full_name = st.text_input("Full name (optional)")
         role = st.selectbox("Role", ["user", "admin"])
         submitted = st.form_submit_button("Create user")
-    if submitted and username and password:
-        r = post(
-            "/api/v1/auth/users",
-            json={
-                "username": username,
-                "password": password,
-                "email": email or None,
-                "full_name": full_name or None,
-                "role": role,
-            },
-        )
-        if r and r.status_code == 200:
-            st.success("User created.")
-            st.rerun()
-        elif r:
-            try:
-                st.error(r.json().get("detail", "Failed"))
-            except Exception:
-                st.error("Failed")
+    if submitted:
+        if len(username.strip()) < 3:
+            st.error("Username must be at least 3 characters.")
+        elif not password:
+            st.error("Password is required.")
+        elif len(password) < 8:
+            st.warning("Password must be at least 8 characters.")
+        elif username and password:
+            r = post(
+                "/api/v1/auth/users",
+                json={
+                    "username": username,
+                    "password": password,
+                    "email": email or None,
+                    "full_name": full_name or None,
+                    "role": role,
+                },
+            )
+            if r and r.status_code == 200:
+                st.success("User created.")
+                st.rerun()
+            elif r:
+                try:
+                    detail = r.json().get("detail", "Request failed.")
+                    st.error(_format_api_error(detail))
+                except Exception:
+                    st.error("Request failed.")
