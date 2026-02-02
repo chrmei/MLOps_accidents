@@ -167,8 +167,8 @@ class TestAuthService:
             f"{auth_base_url}/login",
             json={"username": username, "password": "wrong"},
         )
-        # App returns 429; nginx may return 503 when auth is overloaded by many requests
-        assert response.status_code in (429, 503)
+        # App returns 429 (rate limit) or 403 (lockout); nginx may return 503 when overloaded
+        assert response.status_code in (429, 503, 403)
         data = response.json()
         assert "detail" in data or "message" in data
 
@@ -212,6 +212,19 @@ class TestAuthService:
         data = response.json()
         assert "detail" in data
         assert "locked" in data["detail"].lower() or "too many" in data["detail"].lower()
+        # Teardown: remove the lockout test user
+        list_resp = await http_client.get(
+            f"{auth_base_url}/users",
+            headers=admin_headers,
+        )
+        if list_resp.status_code == 200:
+            for u in list_resp.json():
+                if u.get("username") == username:
+                    await http_client.delete(
+                        f"{auth_base_url}/users/{u['id']}",
+                        headers=admin_headers,
+                    )
+                    break
 
     # =========================================================================
     # Token Refresh Tests
@@ -436,6 +449,11 @@ class TestAuthService:
         assert data["email"] == user_data["email"]
         assert data["role"] == user_data["role"]
         assert "id" in data
+        # Teardown: remove the created test user
+        await http_client.delete(
+            f"{auth_base_url}/users/{data['id']}",
+            headers=admin_headers,
+        )
 
     @pytest.mark.asyncio
     async def test_create_user_duplicate(

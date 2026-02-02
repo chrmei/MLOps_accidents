@@ -225,11 +225,14 @@ def admin_credentials() -> dict:
 
 @pytest.fixture
 def regular_user_credentials() -> dict:
-    """Regular user credentials for testing (from env: TEST_USER_USERNAME, TEST_USER_PASSWORD)."""
-    return {
-        "username": os.getenv("TEST_USER_USERNAME", ""),
-        "password": os.getenv("TEST_USER_PASSWORD", ""),
-    }
+    """Regular user credentials for testing (from env: TEST_USER_USERNAME, TEST_USER_PASSWORD).
+    Password must be at least 8 characters per auth API; short env values are replaced with default.
+    """
+    username = os.getenv("TEST_USER_USERNAME", "testuser")
+    password = os.getenv("TEST_USER_PASSWORD", "TestUser@123")
+    if len(password) < 8:
+        password = "TestUser@123"
+    return {"username": username, "password": password}
 
 
 @pytest.fixture
@@ -320,6 +323,7 @@ async def user_token(
     
     # Retry user creation in case of transient errors
     user_created = False
+    created_user_id = None
     for attempt in range(3):
         create_response = await http_client.post(
             f"{auth_base_url}/users",
@@ -329,6 +333,8 @@ async def user_token(
         # Success (200/201) or user already exists (400) are both OK
         if create_response.status_code in (200, 201, 400):
             user_created = True
+            if create_response.status_code in (200, 201):
+                created_user_id = create_response.json().get("id")
             break
         # If we get 401/403, admin token might be invalid - fail fast
         if create_response.status_code in (401, 403):
@@ -364,7 +370,16 @@ async def user_token(
             token = data["access_token"]
             # Verify token is not empty
             assert token, "Access token is empty"
-            return token
+            try:
+                yield token
+            finally:
+                # Teardown: remove the test user we created (only if we created it this run)
+                if created_user_id is not None:
+                    await http_client.delete(
+                        f"{auth_base_url}/users/{created_user_id}",
+                        headers=headers,
+                    )
+            return
         
         # If 401, user might not exist yet - wait and retry (user creation might be async)
         if response.status_code == 401 and attempt < max_retries - 1:
