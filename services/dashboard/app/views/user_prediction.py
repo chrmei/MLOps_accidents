@@ -47,8 +47,8 @@ def render():
         st.markdown("### Map")
         
         # Get current coordinates from session state (updated by geocoding or map click)
-        current_lat = st.session_state.get(f"{KEY_PREFIX}lat", 48.60)
-        current_long = st.session_state.get(f"{KEY_PREFIX}long", 2.89)
+        current_lat = st.session_state.get(f"{KEY_PREFIX}lat", 48.8584)
+        current_long = st.session_state.get(f"{KEY_PREFIX}long", 2.2945)
         
         # Create map with current coordinates
         m = folium.Map(location=[current_lat, current_long], zoom_start=17)
