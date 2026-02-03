@@ -56,3 +56,54 @@ def delete(path: str, **kwargs) -> httpx.Response | None:
         return None
     with client:
         return client.delete(path, **kwargs)
+
+
+def geocode_address(address: str) -> dict | None:
+    """
+    Geocode an address to latitude/longitude.
+
+    Args:
+        address: Address string to geocode
+
+    Returns:
+        Dict with latitude, longitude, display_name, address or None if failed
+    """
+    resp = post("/api/v1/geocode/", json={"address": address})
+    if resp is None:
+        return None
+    if resp.status_code == 200:
+        return resp.json()
+    return None
+
+
+def suggest_addresses(query: str, limit: int = 5) -> list[dict]:
+    """
+    Get address suggestions for autocomplete.
+
+    Args:
+        query: Partial address query
+        limit: Maximum number of suggestions (default: 5)
+
+    Returns:
+        List of suggestion dicts with address, latitude, longitude, display_name
+    """
+    resp = post("/api/v1/geocode/suggest", json={"query": query, "limit": limit})
+    if resp is None:
+        return []
+    if resp.status_code == 200:
+        data = resp.json()
+        return data.get("suggestions", [])
+    return []
+
+
+def check_geocode_health() -> bool:
+    """
+    Check if geocoding service is available.
+
+    Returns:
+        True if service is healthy, False otherwise
+    """
+    resp = get("/api/v1/geocode/health")
+    if resp is None:
+        return False
+    return resp.status_code == 200
