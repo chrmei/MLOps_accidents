@@ -11,12 +11,16 @@ from fastapi.security import HTTPAuthorizationCredentials
 
 from services.common.auth import (
     authenticate_user,
+    consume_password_reset_token,
     create_access_token,
+    create_password_reset_token,
     create_refresh_token,
     create_user,
+    delete_user,
     get_all_users,
     revoke_token,
     security,
+    update_user_password,
     verify_token,
 )
 from services.common.auth_limits import (
@@ -29,8 +33,11 @@ from services.common.auth_limits import (
 from services.common.config import settings
 from services.common.dependencies import ActiveUser, AdminUser
 from services.common.models import (
+    ForgotPasswordRequest,
+    ForgotPasswordResponse,
     LoginRequest,
     LoginResponse,
+    ResetPasswordRequest,
     Token,
     TokenRefreshRequest,
     UserCreate,
@@ -191,3 +198,49 @@ async def create_new_user(
         role=new_user.role,
         is_active=new_user.is_active,
     )
+
+
+@router.delete("/users/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_user_by_id(user_id: int, current_user: AdminUser):
+    """Delete a user by id (admin-only). Cannot delete the default admin."""
+    deleted = delete_user(user_id)
+    if not deleted:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found",
+        )
+    return None
+
+
+@router.post("/forgot-password", response_model=ForgotPasswordResponse)
+async def forgot_password(request: ForgotPasswordRequest):
+    """
+    Request a password reset for the given username.
+    In production, a reset link would be sent by email.
+    When email is not configured, the reset token is returned (dev only).
+    """
+    token = create_password_reset_token(request.username)
+    # Always return same message to avoid user enumeration
+    if token and settings.DEV_PASSWORD_RESET_TOKEN_IN_RESPONSE:
+        return ForgotPasswordResponse(
+            message="If an account exists, a reset link has been sent.",
+            reset_token=token,
+        )
+    return ForgotPasswordResponse(message="If an account exists, a reset link has been sent.")
+
+
+@router.post("/reset-password", status_code=status.HTTP_204_NO_CONTENT)
+async def reset_password(request: ResetPasswordRequest):
+    """Reset password using the token from forgot-password (or from email)."""
+    username = consume_password_reset_token(request.token)
+    if not username:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or expired reset token.",
+        )
+    if not update_user_password(username, request.new_password):
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to update password.",
+        )
+    return None

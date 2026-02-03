@@ -14,7 +14,7 @@ from collections import OrderedDict
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Sequence, Union
 
 
 class JobStatus(str, Enum):
@@ -52,6 +52,7 @@ class Job:
     error: Optional[str] = None
     created_by: Optional[str] = None
     parameters: Optional[Dict[str, Any]] = None
+    logs: List[str] = field(default_factory=list)
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert job to dictionary for API responses."""
@@ -67,6 +68,7 @@ class Job:
             "result": self.result,
             "error": self.error,
             "created_by": self.created_by,
+            "logs": self.logs,
         }
 
 
@@ -147,6 +149,7 @@ class JobStore:
         message: Optional[str] = None,
         result: Optional[Dict[str, Any]] = None,
         error: Optional[str] = None,
+        logs: Optional[List[str]] = None,
     ) -> Optional[Job]:
         """
         Update a job's status and/or progress.
@@ -158,6 +161,7 @@ class JobStore:
             message: Status message (optional)
             result: Job result data (optional)
             error: Error message if failed (optional)
+            logs: Full list of log lines (optional)
 
         Returns:
             The updated Job if found, None otherwise
@@ -186,39 +190,83 @@ class JobStore:
             if error is not None:
                 job.error = error
 
+            if logs is not None:
+                job.logs = logs
+
             return job
 
     async def list_jobs(
         self,
-        job_type: Optional[str] = None,
+        job_type: Optional[Union[str, Sequence[str]]] = None,
         status: Optional[JobStatus] = None,
         created_by: Optional[str] = None,
         limit: int = 50,
+        offset: int = 0,
     ) -> List[Job]:
         """
-        List jobs with optional filtering.
+        List jobs with optional filtering, sorted by created_at descending.
 
         Args:
             job_type: Filter by job type (optional)
             status: Filter by status (optional)
             created_by: Filter by creator (optional)
             limit: Maximum number of jobs to return
+            offset: Number of jobs to skip (for pagination)
 
         Returns:
-            List of matching jobs (most recent first)
+            List of matching jobs (newest first)
         """
         jobs = list(self._jobs.values())
 
         # Apply filters
+        job_types = None
         if job_type:
-            jobs = [j for j in jobs if j.job_type == job_type]
+            if isinstance(job_type, str):
+                job_types = [job_type]
+            else:
+                job_types = list(job_type)
+        if job_types:
+            jobs = [j for j in jobs if j.job_type in job_types]
         if status:
             jobs = [j for j in jobs if j.status == status]
         if created_by:
             jobs = [j for j in jobs if j.created_by == created_by]
 
-        # Return most recent first, limited
-        return list(reversed(jobs))[:limit]
+        # Sort by created_at descending (newest first)
+        jobs.sort(key=lambda j: j.created_at, reverse=True)
+        return jobs[offset : offset + limit]
+
+    async def count_jobs(
+        self,
+        job_type: Optional[Union[str, Sequence[str]]] = None,
+        status: Optional[JobStatus] = None,
+        created_by: Optional[str] = None,
+    ) -> int:
+        """
+        Count jobs matching optional filters (for pagination total).
+
+        Args:
+            job_type: Filter by job type (optional)
+            status: Filter by status (optional)
+            created_by: Filter by creator (optional)
+
+        Returns:
+            Total number of matching jobs
+        """
+        jobs = list(self._jobs.values())
+        job_types = None
+        if job_type:
+            if isinstance(job_type, str):
+                job_types = [job_type]
+            else:
+                job_types = list(job_type)
+        if job_types:
+            jobs = [j for j in jobs if j.job_type in job_types]
+        if status:
+            jobs = [j for j in jobs if j.status == status]
+        if created_by:
+            jobs = [j for j in jobs if j.created_by == created_by]
+        return len(jobs)
 
     async def cancel_job(self, job_id: str) -> Optional[Job]:
         """
@@ -282,6 +330,17 @@ class JobStore:
         return stats
 
 
-# Global job store instance (shared within each service)
-job_store = JobStore()
+# Global job store instance (shared within each service).
+# Uses Postgres when DATABASE_URL is postgresql (sync driver); otherwise in-memory.
+def _get_job_store() -> JobStore:
+    from services.common import database
+
+    if database._is_postgres():
+        from services.common.job_store_postgres import PostgresJobStore
+
+        return PostgresJobStore()
+    return JobStore()
+
+
+job_store = _get_job_store()
 

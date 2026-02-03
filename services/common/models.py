@@ -92,6 +92,26 @@ class LoginResponse(BaseModel):
     expires_in: int
 
 
+class ForgotPasswordRequest(BaseModel):
+    """Request payload for forgot password (request reset token)."""
+
+    username: str = Field(..., min_length=3, max_length=50)
+
+
+class ForgotPasswordResponse(BaseModel):
+    """Response for forgot password. In dev, reset_token may be returned."""
+
+    message: str = "If an account exists, a reset link has been sent."
+    reset_token: Optional[str] = None  # Only in dev / when email not configured
+
+
+class ResetPasswordRequest(BaseModel):
+    """Request payload for resetting password with token."""
+
+    token: str = Field(..., min_length=1)
+    new_password: str = Field(..., min_length=8, max_length=1024)
+
+
 # =============================================================================
 # User Models
 # =============================================================================
@@ -204,6 +224,15 @@ class JobResponse(BaseModel):
     result: Optional[Dict[str, Any]] = None
     error: Optional[str] = None
     progress: Optional[float] = Field(None, ge=0, le=100)
+    message: Optional[str] = None
+    logs: Optional[List[str]] = None
+
+
+class JobsListResponse(BaseModel):
+    """Paginated list of jobs with total count."""
+
+    items: List[JobResponse]
+    total: int
 
 
 # =============================================================================

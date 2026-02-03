@@ -222,7 +222,9 @@ class TestTrainService:
         )
         assert response.status_code == 200
         data = response.json()
-        assert isinstance(data, list)
+        assert isinstance(data, dict)
+        assert "items" in data and "total" in data
+        assert isinstance(data["items"], list)
 
     @pytest.mark.asyncio
     async def test_list_jobs_with_filters(
@@ -239,7 +241,9 @@ class TestTrainService:
         )
         assert response.status_code == 200
         data = response.json()
-        assert isinstance(data, list)
+        assert isinstance(data, dict)
+        assert "items" in data and "total" in data
+        assert isinstance(data["items"], list)
 
     @pytest.mark.asyncio
     async def test_list_jobs_unauthorized(

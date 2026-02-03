@@ -162,7 +162,8 @@ def train_single_model(
         
         # Evaluate model
         metrics = trainer.evaluate(model, X_test, y_test)
-        
+        logger.info("Test F1 for %s: %.4f", model_type, metrics["f1_score"])
+
         # Save model
         paths_config = config.get("paths", {})
         model_output_dir = os.path.dirname(paths_config.get("model_output", "models/trained_model.joblib"))

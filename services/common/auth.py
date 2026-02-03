@@ -224,16 +224,115 @@ def verify_token(token: str, token_type: str = "access") -> TokenData:
 
 
 # =============================================================================
-# User Database Simulation (Replace with real DB in production)
+# User Database (in-memory or Postgres when DATABASE_URL is postgresql)
 # =============================================================================
 
-# In-memory user storage for development
-# In production, replace with SQLAlchemy or other database
+# In-memory user storage when not using Postgres
 _fake_users_db: dict[str, UserInDB] = {}
 
 
+def _use_postgres() -> bool:
+    """True when DATABASE_URL is postgresql (sync driver)."""
+    try:
+        from services.common import database
+
+        return database._is_postgres()
+    except Exception:
+        return False
+
+
+def _db_row_to_user_in_db(row) -> UserInDB:
+    """Convert UserModel row to UserInDB."""
+    return UserInDB(
+        id=row.id,
+        username=row.username,
+        email=row.email,
+        full_name=row.full_name,
+        role=UserRole(row.role) if isinstance(row.role, str) else row.role,
+        is_active=bool(row.is_active),
+        hashed_password=row.hashed_password,
+        created_at=row.created_at or datetime.utcnow(),
+        updated_at=row.updated_at,
+    )
+
+
+def _db_get_user(username: str) -> Optional[UserInDB]:
+    """Get user from Postgres by username."""
+    from sqlalchemy import select
+
+    from services.common.database import UserModel, get_session
+
+    with get_session() as session:
+        row = session.execute(
+            select(UserModel).where(UserModel.username == username)
+        ).scalars().one_or_none()
+        return _db_row_to_user_in_db(row) if row else None
+
+
+def _db_create_user(
+    username: str,
+    password: str,
+    email: Optional[str] = None,
+    full_name: Optional[str] = None,
+    role: UserRole = UserRole.USER,
+) -> UserInDB:
+    """Create user in Postgres."""
+    from sqlalchemy import select
+
+    from services.common.database import UserModel, get_session
+
+    with get_session() as session:
+        existing = session.execute(
+            select(UserModel).where(UserModel.username == username)
+        ).scalars().one_or_none()
+        if existing:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Username already registered",
+            )
+        user = UserModel(
+            username=username,
+            email=email,
+            full_name=full_name,
+            role=role.value,
+            is_active=1,
+            hashed_password=get_password_hash(password),
+        )
+        session.add(user)
+        session.flush()
+        return _db_row_to_user_in_db(user)
+
+
+def _db_ensure_admin() -> None:
+    """Ensure default admin user exists in Postgres."""
+    from sqlalchemy.dialects.postgresql import insert as pg_insert
+
+    from services.common.database import UserModel, create_tables_if_postgres, get_session
+
+    create_tables_if_postgres()
+    with get_session() as session:
+        stmt = (
+            pg_insert(UserModel)
+            .values(
+                username=settings.ADMIN_USERNAME,
+                email=settings.ADMIN_EMAIL,
+                full_name="Administrator",
+                role=UserRole.ADMIN.value,
+                is_active=1,
+                hashed_password=get_password_hash(settings.ADMIN_PASSWORD),
+            )
+            .on_conflict_do_nothing(index_elements=[UserModel.username])
+        )
+        session.execute(stmt)
+
+
 def _init_admin_user():
-    """Initialize the default admin user."""
+    """Initialize the default admin user (in-memory or Postgres). Skipped if admin credentials not set in env."""
+    if not (settings.ADMIN_USERNAME and settings.ADMIN_PASSWORD):
+        return
+    if _use_postgres():
+        _db_ensure_admin()
+        return
     if settings.ADMIN_USERNAME not in _fake_users_db:
         _fake_users_db[settings.ADMIN_USERNAME] = UserInDB(
             id=1,
@@ -261,6 +360,8 @@ def get_user(username: str) -> Optional[UserInDB]:
     Returns:
         UserInDB if found, None otherwise
     """
+    if _use_postgres():
+        return _db_get_user(username)
     return _fake_users_db.get(username)
 
 
@@ -287,6 +388,8 @@ def create_user(
     Raises:
         HTTPException: If username already exists
     """
+    if _use_postgres():
+        return _db_create_user(username, password, email, full_name, role)
     if username in _fake_users_db:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -509,6 +612,118 @@ def check_permission(user: User, required_role: UserRole) -> bool:
     return role_hierarchy.get(user.role, 0) >= role_hierarchy.get(required_role, 0)
 
 
+def _db_get_user_by_id(user_id: int) -> Optional[UserInDB]:
+    """Get user from Postgres by id."""
+    from services.common.database import UserModel, get_session
+
+    with get_session() as session:
+        row = session.get(UserModel, user_id)
+        return _db_row_to_user_in_db(row) if row else None
+
+
+def _db_update_user_password(username: str, new_hashed_password: str) -> bool:
+    """Update user password in Postgres by username. Returns True if updated."""
+    from sqlalchemy import select, update
+
+    from services.common.database import UserModel, get_session
+
+    with get_session() as session:
+        result = (
+            session.execute(
+                update(UserModel)
+                .where(UserModel.username == username)
+                .values(hashed_password=new_hashed_password)
+            )
+        )
+        return result.rowcount > 0
+
+
+def _db_delete_user(user_id: int) -> bool:
+    """Delete user from Postgres by id. Raises HTTPException if admin."""
+    from services.common.database import UserModel, get_session
+
+    with get_session() as session:
+        row = session.get(UserModel, user_id)
+        if not row:
+            return False
+        if row.username == settings.ADMIN_USERNAME:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Cannot delete the default admin user",
+            )
+        session.delete(row)
+        session.flush()
+        return True
+
+
+def _db_get_all_users() -> list[User]:
+    """Get all users from Postgres."""
+    from sqlalchemy import select
+
+    from services.common.database import UserModel, get_session
+
+    with get_session() as session:
+        rows = session.execute(select(UserModel)).scalars().all()
+        return [
+            User(
+                id=r.id,
+                username=r.username,
+                email=r.email,
+                full_name=r.full_name,
+                role=UserRole(r.role) if isinstance(r.role, str) else r.role,
+                is_active=bool(r.is_active),
+                created_at=r.created_at or datetime.utcnow(),
+                updated_at=r.updated_at,
+            )
+            for r in rows
+        ]
+
+
+def get_user_by_id(user_id: int) -> Optional[UserInDB]:
+    """
+    Get a user by id (admin function).
+
+    Args:
+        user_id: The user id to look up
+
+    Returns:
+        UserInDB if found, None otherwise
+    """
+    if _use_postgres():
+        return _db_get_user_by_id(user_id)
+    for u in _fake_users_db.values():
+        if u.id == user_id:
+            return u
+    return None
+
+
+def delete_user(user_id: int) -> bool:
+    """
+    Delete a user by id (admin-only). Cannot delete the default admin.
+
+    Args:
+        user_id: The user id to delete
+
+    Returns:
+        True if user was deleted, False if not found
+
+    Raises:
+        HTTPException: If trying to delete the default admin user
+    """
+    if _use_postgres():
+        return _db_delete_user(user_id)
+    user = get_user_by_id(user_id)
+    if not user:
+        return False
+    if user.username == settings.ADMIN_USERNAME:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Cannot delete the default admin user",
+        )
+    del _fake_users_db[user.username]
+    return True
+
+
 def get_all_users() -> list[User]:
     """
     Get all users (admin function).
@@ -516,6 +731,8 @@ def get_all_users() -> list[User]:
     Returns:
         List of all users
     """
+    if _use_postgres():
+        return _db_get_all_users()
     return [
         User(
             id=u.id,
@@ -529,4 +746,54 @@ def get_all_users() -> list[User]:
         )
         for u in _fake_users_db.values()
     ]
+
+
+# =============================================================================
+# Password reset (token-based, in-memory store)
+# =============================================================================
+
+# reset_token -> (username, expires_at)
+_password_reset_tokens: dict[str, tuple[str, datetime]] = {}
+_RESET_TOKEN_EXPIRE_MINUTES = 60
+
+
+def create_password_reset_token(username: str) -> Optional[str]:
+    """
+    Create a one-time password reset token for the user.
+    Returns the token string, or None if user not found.
+    """
+    user = get_user(username)
+    if not user:
+        return None
+    token = str(uuid.uuid4())
+    expires_at = datetime.utcnow() + timedelta(minutes=_RESET_TOKEN_EXPIRE_MINUTES)
+    _password_reset_tokens[token] = (username, expires_at)
+    return token
+
+
+def consume_password_reset_token(token: str) -> Optional[str]:
+    """
+    Validate reset token and return username if valid. Token is consumed (removed).
+    Returns None if token invalid or expired.
+    """
+    if not token or token not in _password_reset_tokens:
+        return None
+    username, expires_at = _password_reset_tokens.pop(token)
+    if expires_at < datetime.utcnow():
+        return None
+    return username
+
+
+def update_user_password(username: str, new_password: str) -> bool:
+    """
+    Set a new password for the user (by username).
+    Returns True if updated.
+    """
+    hashed = get_password_hash(new_password)
+    if _use_postgres():
+        return _db_update_user_password(username, hashed)
+    if username not in _fake_users_db:
+        return False
+    _fake_users_db[username].hashed_password = hashed
+    return True
 

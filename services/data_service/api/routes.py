@@ -11,9 +11,10 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from services.common.config import Settings
 from services.common.dependencies import AdminUser, SettingsDep
+from services.common.job_runner import run_sync_with_streaming_logs
 from services.common.job_store import JobStatus as StoreJobStatus
 from services.common.job_store import JobType, job_store
-from services.common.models import JobResponse, JobStatus as ApiJobStatus
+from services.common.models import JobResponse, JobsListResponse, JobStatus as ApiJobStatus
 
 from ..core.features import build_feature_dataset
 from ..core.preprocessing import preprocess_data
@@ -40,7 +41,12 @@ def _job_to_response(job) -> JobResponse:
         result=job.result,
         error=job.error,
         progress=job.progress,
+        message=job.message or None,
+        logs=job.logs if job.logs else None,
     )
+
+
+_DATA_LOG_PREFIXES = ("src.", "services.data_service.")
 
 
 async def _run_preprocess_job(job_id: str, request: PreprocessRequest, settings: Settings):
@@ -54,16 +60,15 @@ async def _run_preprocess_job(job_id: str, request: PreprocessRequest, settings:
         message="Preprocessing started",
     )
 
-    try:
-        result = await asyncio.to_thread(preprocess_data, raw_dir, preprocessed_dir)
-        await job_store.update_job(
-            job_id,
-            status=StoreJobStatus.COMPLETED,
-            progress=100.0,
-            message="Preprocessing completed",
-            result=result,
-        )
-    except Exception as exc:  # pylint: disable=broad-except
+    result, exc = await run_sync_with_streaming_logs(
+        job_id,
+        preprocess_data,
+        raw_dir,
+        preprocessed_dir,
+        log_prefixes=_DATA_LOG_PREFIXES,
+        update_interval_seconds=2.0,
+    )
+    if exc is not None:
         logger.exception("Preprocessing job failed")
         await job_store.update_job(
             job_id,
@@ -71,6 +76,14 @@ async def _run_preprocess_job(job_id: str, request: PreprocessRequest, settings:
             progress=100.0,
             message="Preprocessing failed",
             error=str(exc),
+        )
+    else:
+        await job_store.update_job(
+            job_id,
+            status=StoreJobStatus.COMPLETED,
+            progress=100.0,
+            message="Preprocessing completed",
+            result=result,
         )
 
 
@@ -86,23 +99,18 @@ async def _run_feature_job(job_id: str, request: BuildFeaturesRequest, settings:
         message="Feature engineering started",
     )
 
-    try:
-        result = await asyncio.to_thread(
-            build_feature_dataset,
-            interim_path,
-            preprocessed_dir,
-            models_dir,
-            request.cyclic_encoding,
-            request.interactions,
-        )
-        await job_store.update_job(
-            job_id,
-            status=StoreJobStatus.COMPLETED,
-            progress=100.0,
-            message="Feature engineering completed",
-            result=result,
-        )
-    except Exception as exc:  # pylint: disable=broad-except
+    result, exc = await run_sync_with_streaming_logs(
+        job_id,
+        build_feature_dataset,
+        interim_path,
+        preprocessed_dir,
+        models_dir,
+        request.cyclic_encoding,
+        request.interactions,
+        log_prefixes=_DATA_LOG_PREFIXES,
+        update_interval_seconds=2.0,
+    )
+    if exc is not None:
         logger.exception("Feature job failed")
         await job_store.update_job(
             job_id,
@@ -110,6 +118,14 @@ async def _run_feature_job(job_id: str, request: BuildFeaturesRequest, settings:
             progress=100.0,
             message="Feature engineering failed",
             error=str(exc),
+        )
+    else:
+        await job_store.update_job(
+            job_id,
+            status=StoreJobStatus.COMPLETED,
+            progress=100.0,
+            message="Feature engineering completed",
+            result=result,
         )
 
 
@@ -160,19 +176,42 @@ async def get_job_status(job_id: str, current_user: AdminUser):
     return _job_to_response(job)
 
 
-@router.get("/jobs", response_model=List[JobResponse])
+_JOB_PAGE_SIZES = (10, 20, 50, 100)
+
+
+@router.get("/jobs", response_model=JobsListResponse)
 async def list_jobs(
     current_user: AdminUser,
-    job_type: Optional[str] = Query(None, description="Filter by job type"),
+    job_type: Optional[str] = Query(None, description="Filter by job type (comma-separated for multiple)"),
     status_filter: Optional[ApiJobStatus] = Query(None, alias="status", description="Filter by job status"),
+    limit: int = Query(10, ge=1, le=100, description="Page size (10, 20, 50, or 100)"),
+    offset: int = Query(0, ge=0, description="Number of jobs to skip"),
 ):
+    if limit not in _JOB_PAGE_SIZES:
+        limit = 10
     status_value = None
     if status_filter:
         status_value = StoreJobStatus(status_filter.value)
 
+    job_types = None
+    if job_type:
+        job_types = [j.strip() for j in job_type.split(",") if j.strip()]
+    else:
+        job_types = [JobType.PREPROCESSING.value, JobType.FEATURE_ENGINEERING.value]
+
     jobs = await job_store.list_jobs(
-        job_type=job_type,
+        job_type=job_types,
+        status=status_value,
+        created_by=current_user.username,
+        limit=limit,
+        offset=offset,
+    )
+    total = await job_store.count_jobs(
+        job_type=job_types,
         status=status_value,
         created_by=current_user.username,
     )
-    return [_job_to_response(job) for job in jobs]
+    return JobsListResponse(
+        items=[_job_to_response(job) for job in jobs],
+        total=total,
+    )

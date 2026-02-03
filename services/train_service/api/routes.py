@@ -13,9 +13,10 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from services.common.config import Settings
 from services.common.dependencies import AdminUser, SettingsDep
+from services.common.job_runner import run_sync_with_streaming_logs
 from services.common.job_store import JobStatus as StoreJobStatus
 from services.common.job_store import JobType, job_store
-from services.common.models import JobResponse, JobStatus as ApiJobStatus
+from services.common.models import JobResponse, JobsListResponse, JobStatus as ApiJobStatus
 
 from ..core.config_io import ensure_config_exists, load_config, save_config
 from ..core.trainer import run_training
@@ -32,6 +33,9 @@ router = APIRouter(prefix="/api/v1/train", tags=["train"])
 
 
 def _job_to_response(job) -> JobResponse:
+    result = job.result
+    if result is not None:
+        result = _make_result_serializable(result)
     return JobResponse(
         job_id=job.id,
         status=ApiJobStatus(job.status.value),
@@ -39,10 +43,26 @@ def _job_to_response(job) -> JobResponse:
         created_at=job.created_at,
         started_at=job.started_at,
         completed_at=job.completed_at,
-        result=job.result,
+        result=result,
         error=job.error,
         progress=job.progress,
+        message=job.message or None,
+        logs=job.logs if job.logs else None,
     )
+
+
+_TRAIN_LOG_PREFIXES = ("src.", "services.train_service.")
+
+
+def _make_result_serializable(obj: Any) -> Any:
+    """Return a JSON-serializable copy of obj; replace non-serializable values with a placeholder."""
+    if obj is None or isinstance(obj, (str, int, float, bool)):
+        return obj
+    if isinstance(obj, dict):
+        return {k: _make_result_serializable(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_make_result_serializable(v) for v in obj]
+    return f"<{type(obj).__name__}>"
 
 
 async def _run_training_job(job_id: str, request: TrainRequest, settings: Settings):
@@ -54,23 +74,18 @@ async def _run_training_job(job_id: str, request: TrainRequest, settings: Settin
     )
 
     config_path = request.config_path or settings.MODEL_CONFIG_PATH
-    try:
-        result = await asyncio.to_thread(
-            run_training,
-            request.models,
-            request.grid_search,
-            request.compare,
-            config_path,
-            request.config,
-        )
-        await job_store.update_job(
-            job_id,
-            status=StoreJobStatus.COMPLETED,
-            progress=100.0,
-            message="Training completed",
-            result=result,
-        )
-    except Exception as exc:  # pylint: disable=broad-except
+    result, exc = await run_sync_with_streaming_logs(
+        job_id,
+        run_training,
+        request.models,
+        request.grid_search,
+        request.compare,
+        config_path,
+        request.config,
+        log_prefixes=_TRAIN_LOG_PREFIXES,
+        update_interval_seconds=2.0,
+    )
+    if exc is not None:
         logger.exception("Training job failed")
         await job_store.update_job(
             job_id,
@@ -78,6 +93,14 @@ async def _run_training_job(job_id: str, request: TrainRequest, settings: Settin
             progress=100.0,
             message="Training failed",
             error=str(exc),
+        )
+    else:
+        await job_store.update_job(
+            job_id,
+            status=StoreJobStatus.COMPLETED,
+            progress=100.0,
+            message="Training completed",
+            result=_make_result_serializable(result),
         )
 
 
@@ -111,22 +134,45 @@ async def get_job_status(job_id: str, current_user: AdminUser):
     return _job_to_response(job)
 
 
-@router.get("/jobs", response_model=List[JobResponse])
+_JOB_PAGE_SIZES = (10, 20, 50, 100)
+
+
+@router.get("/jobs", response_model=JobsListResponse)
 async def list_jobs(
     current_user: AdminUser,
-    job_type: Optional[str] = Query(None, description="Filter by job type"),
+    job_type: Optional[str] = Query(None, description="Filter by job type (comma-separated for multiple)"),
     status_filter: Optional[ApiJobStatus] = Query(None, alias="status", description="Filter by job status"),
+    limit: int = Query(10, ge=1, le=100, description="Page size (10, 20, 50, or 100)"),
+    offset: int = Query(0, ge=0, description="Number of jobs to skip"),
 ):
+    if limit not in _JOB_PAGE_SIZES:
+        limit = 10
     status_value = None
     if status_filter:
         status_value = StoreJobStatus(status_filter.value)
 
+    job_types = None
+    if job_type:
+        job_types = [j.strip() for j in job_type.split(",") if j.strip()]
+    else:
+        job_types = [JobType.TRAINING.value]
+
     jobs = await job_store.list_jobs(
-        job_type=job_type,
+        job_type=job_types,
+        status=status_value,
+        created_by=current_user.username,
+        limit=limit,
+        offset=offset,
+    )
+    total = await job_store.count_jobs(
+        job_type=job_types,
         status=status_value,
         created_by=current_user.username,
     )
-    return [_job_to_response(job) for job in jobs]
+    return JobsListResponse(
+        items=[_job_to_response(job) for job in jobs],
+        total=total,
+    )
 
 
 @router.get("/metrics/{model_type}")
