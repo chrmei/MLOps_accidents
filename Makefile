@@ -345,33 +345,36 @@ docker-restart: ## Restart all microservices
 	@echo "Restarting microservices..."
 	docker compose restart nginx auth data train predict
 
+# Compose files: base + test overrides (relaxed auth rate limits and nginx for tests)
+COMPOSE_TEST := -f docker-compose.yml -f docker-compose.test.yml
+
 docker-test: ## Run API tests in Docker (starts services if needed, runs tests, stops test container)
 	@echo "Running API tests in Docker..."
 	@echo "Building and starting services if not running..."
-	@docker compose build nginx auth data train predict
-	@docker compose up -d nginx auth data train predict || true
+	@docker compose $(COMPOSE_TEST) build nginx auth data train predict
+	@docker compose $(COMPOSE_TEST) up -d nginx auth data train predict || true
 	@echo "Waiting for services to be healthy..."
 	@sleep 5
 	@echo "Running tests..."
-	docker compose --profile test run --rm test
+	docker compose $(COMPOSE_TEST) --profile test run --rm test
 	@echo "Tests completed!"
 
 docker-test-build: ## Build test service Docker image
 	@echo "Building test service..."
-	docker compose build test
+	docker compose $(COMPOSE_TEST) build test
 
 docker-test-run: ## Run API tests in Docker with custom command (usage: make docker-test-run CMD="pytest tests/test_auth_service.py -v")
 	@if [ -z "$(CMD)" ]; then \
 		echo "Running all API tests..."; \
-		docker compose --profile test run --rm test; \
+		docker compose $(COMPOSE_TEST) --profile test run --rm test; \
 	else \
 		echo "Running custom test command: $(CMD)"; \
-		docker compose --profile test run --rm test $(CMD); \
+		docker compose $(COMPOSE_TEST) --profile test run --rm test $(CMD); \
 	fi
 
 docker-test-cov: ## Run API tests in Docker with coverage report
 	@echo "Running API tests with coverage..."
-	docker compose --profile test run --rm test pytest tests/ -v --tb=short --cov=services --cov-report=term-missing --cov-report=html
+	docker compose $(COMPOSE_TEST) --profile test run --rm test pytest tests/ -v --tb=short --cov=services --cov-report=term-missing --cov-report=html
 
 docker-test-service: ## Run tests for specific service (usage: make docker-test-service SERVICE=auth)
 	@if [ -z "$(SERVICE)" ]; then \
@@ -380,7 +383,7 @@ docker-test-service: ## Run tests for specific service (usage: make docker-test-
 		exit 1; \
 	fi
 	@echo "Running tests for $(SERVICE) service..."
-	docker compose --profile test run --rm test pytest tests/test_$(SERVICE)_service.py -v --tb=short
+	docker compose $(COMPOSE_TEST) --profile test run --rm test pytest tests/test_$(SERVICE)_service.py -v --tb=short
 
 docker-dev: ## Start development shell container (interactive)
 	@echo "Starting development container..."

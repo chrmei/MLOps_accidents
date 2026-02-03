@@ -11,7 +11,7 @@ from datetime import datetime
 from enum import Enum
 from typing import Any, Dict, List, Optional
 
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, field_validator
 
 
 # =============================================================================
@@ -65,10 +65,22 @@ class TokenRefreshRequest(BaseModel):
 
 
 class LoginRequest(BaseModel):
-    """Request payload for login."""
+    """Request payload for login. Username aligned with UserBase (3–50 chars)."""
 
-    username: str
-    password: str
+    username: str = Field(..., min_length=3, max_length=50)
+    password: str = Field(..., min_length=1, max_length=1024)
+
+    @field_validator("username")
+    @classmethod
+    def username_no_whitespace_or_control(cls, v: str) -> str:
+        """Reject leading/trailing whitespace and control characters."""
+        if v != v.strip():
+            raise ValueError("Username must not have leading or trailing whitespace")
+        if any(ord(c) < 32 and c not in "\t\n\r" for c in v) or any(
+            ord(c) == 127 for c in v
+        ):
+            raise ValueError("Username must not contain control characters")
+        return v
 
 
 class LoginResponse(BaseModel):

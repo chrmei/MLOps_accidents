@@ -2,10 +2,12 @@
 FastAPI routes for the authentication service.
 """
 
+import logging
 from datetime import timedelta
-from typing import List
+from typing import Annotated, List
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.security import HTTPAuthorizationCredentials
 
 from services.common.auth import (
     authenticate_user,
@@ -13,7 +15,16 @@ from services.common.auth import (
     create_refresh_token,
     create_user,
     get_all_users,
+    revoke_token,
+    security,
     verify_token,
+)
+from services.common.auth_limits import (
+    check_lockout,
+    check_rate_limit,
+    clear_failed_logins,
+    record_failed_login,
+    record_rate_limit_request,
 )
 from services.common.config import settings
 from services.common.dependencies import ActiveUser, AdminUser
@@ -26,19 +37,47 @@ from services.common.models import (
     UserResponse,
 )
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
 
 
 @router.post("/login", response_model=LoginResponse)
 async def login(request: LoginRequest):
     """Authenticate user and return access token."""
+    username = request.username
+
+    # Per-username login rate limit
+    if not check_rate_limit(
+        username,
+        settings.LOGIN_RATE_LIMIT_PER_USER,
+        settings.LOGIN_RATE_WINDOW_SECONDS,
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many login attempts for this username. Try again later.",
+        )
+
+    # Account lockout after repeated failures
+    locked, minutes_left = check_lockout(username)
+    if locked:
+        logger.warning("Login attempt for locked account: %s", username)
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"Account temporarily locked. Try again after {minutes_left} minutes.",
+        )
+
     user = authenticate_user(request.username, request.password)
+    record_rate_limit_request(username, settings.LOGIN_RATE_WINDOW_SECONDS)
+
     if not user:
+        record_failed_login(username)
+        logger.info("Failed login for username: %s", username)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid credentials",
         )
 
+    clear_failed_logins(username)
     access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = create_access_token(
         data={"sub": user.username, "role": user.role.value},
@@ -60,7 +99,24 @@ async def login(request: LoginRequest):
 async def refresh_token(request: TokenRefreshRequest):
     """Refresh an expired access token using a refresh token."""
     token_data = verify_token(request.refresh_token, token_type="refresh")
+    username = token_data.username or ""
 
+    if not check_rate_limit(
+        username,
+        settings.REFRESH_RATE_LIMIT_PER_USER,
+        settings.REFRESH_RATE_WINDOW_SECONDS,
+        key_prefix="refresh:",
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many refresh requests for this user. Try again later.",
+        )
+
+    record_rate_limit_request(
+        username,
+        settings.REFRESH_RATE_WINDOW_SECONDS,
+        key_prefix="refresh:",
+    )
     access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     new_access_token = create_access_token(
         data={"sub": token_data.username, "role": token_data.role.value},
@@ -72,6 +128,15 @@ async def refresh_token(request: TokenRefreshRequest):
         token_type="bearer",
         expires_in=int(access_token_expires.total_seconds()),
     )
+
+
+@router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
+async def logout(
+    credentials: Annotated[HTTPAuthorizationCredentials, Depends(security)],
+):
+    """Revoke the current access token (logout). Requires Bearer token."""
+    revoke_token(credentials.credentials)
+    return None
 
 
 @router.get("/me", response_model=UserResponse)

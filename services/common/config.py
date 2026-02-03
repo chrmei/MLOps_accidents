@@ -83,6 +83,20 @@ class Settings(BaseSettings):
     ADMIN_PASSWORD: str = "Mlops@Admin2024!Secure"
     ADMIN_EMAIL: str = "admin@example.com"
 
+    # ==========================================================================
+    # Auth rate limits (per-username, in-memory; multi-instance needs Redis)
+    # ==========================================================================
+    LOGIN_RATE_LIMIT_PER_USER: int = 5
+    LOGIN_RATE_WINDOW_SECONDS: int = 900  # 15 minutes
+    REFRESH_RATE_LIMIT_PER_USER: int = 20
+    REFRESH_RATE_WINDOW_SECONDS: int = 60
+
+    # ==========================================================================
+    # Failed login lockout
+    # ==========================================================================
+    MAX_FAILED_LOGIN_ATTEMPTS: int = 5
+    LOGIN_LOCKOUT_MINUTES: int = 15
+
     class Config:
         """Pydantic settings configuration."""
 

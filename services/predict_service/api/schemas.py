@@ -20,6 +20,7 @@ class PredictionResponse(BaseModel):
     """Response payload for single prediction."""
 
     prediction: Any
+    probability: float
     model_type: str
 
 
@@ -33,5 +34,6 @@ class BatchPredictionResponse(BaseModel):
     """Response payload for batch predictions."""
 
     predictions: List[Any]
+    probabilities: List[float]
     count: int
     model_type: str

@@ -58,7 +58,11 @@ class TestPredictService:
         if response.status_code == 200:
             data = response.json()
             assert "prediction" in data
+            assert "probability" in data
             assert "model_type" in data
+            assert data["prediction"] in (0, 1)
+            assert isinstance(data["probability"], (int, float))
+            assert 0 <= data["probability"] <= 1
 
     @pytest.mark.asyncio
     async def test_single_prediction_returns_model_type(
@@ -79,7 +83,9 @@ class TestPredictService:
         if response.status_code == 200:
             data = response.json()
             assert "prediction" in data
+            assert "probability" in data
             assert "model_type" in data
+            assert 0 <= data["probability"] <= 1
 
     @pytest.mark.asyncio
     async def test_single_prediction_missing_features(
@@ -172,10 +178,15 @@ class TestPredictService:
         if response.status_code == 200:
             data = response.json()
             assert "predictions" in data
+            assert "probabilities" in data
             assert "count" in data
             assert "model_type" in data
             assert isinstance(data["predictions"], list)
+            assert isinstance(data["probabilities"], list)
             assert data["count"] == len(sample_batch_features)
+            assert len(data["probabilities"]) == len(data["predictions"])
+            for p in data["probabilities"]:
+                assert 0 <= p <= 1
 
     @pytest.mark.asyncio
     async def test_batch_prediction_returns_model_type(
@@ -196,8 +207,10 @@ class TestPredictService:
         if response.status_code == 200:
             data = response.json()
             assert "predictions" in data
+            assert "probabilities" in data
             assert "count" in data
             assert "model_type" in data
+            assert len(data["probabilities"]) == len(data["predictions"])
 
     @pytest.mark.asyncio
     async def test_batch_prediction_empty_list(

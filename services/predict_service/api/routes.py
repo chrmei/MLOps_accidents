@@ -38,6 +38,7 @@ async def single_prediction(
     )
     return PredictionResponse(
         prediction=result["prediction"],
+        probability=result["probability"],
         model_type=result["model_type"],
     )
 
@@ -56,6 +57,7 @@ async def batch_prediction(
     )
     return BatchPredictionResponse(
         predictions=result["predictions"],
+        probabilities=result["probabilities"],
         count=result["count"],
         model_type=result["model_type"],
     )
