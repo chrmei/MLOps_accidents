@@ -5,7 +5,7 @@ Configuration is loaded from environment variables with sensible defaults.
 """
 
 from functools import lru_cache
-from typing import List
+from typing import List, Union
 
 from pydantic import field_validator
 from pydantic_settings import BaseSettings
@@ -61,15 +61,51 @@ class Settings(BaseSettings):
     # ==========================================================================
     # CORS Configuration
     # ==========================================================================
-    CORS_ORIGINS: List[str] = ["http://localhost:3000", "http://localhost:8080"]
+    # Use Union to allow both string and list, preventing pydantic-settings from
+    # trying to parse as JSON before the validator runs.
+    # The validator converts it to List[str] before validation.
+    CORS_ORIGINS: Union[str, List[str]] = "http://localhost:3000,http://localhost:8080"
+    
+    # After validation, this will always be List[str] for use in CORSMiddleware
 
     @field_validator("CORS_ORIGINS", mode="before")
     @classmethod
-    def parse_cors_origins(cls, v):
-        """Parse CORS origins from comma-separated string or list."""
+    def parse_cors_origins(cls, v) -> List[str]:
+        """
+        Parse CORS origins from comma-separated string or list.
+        
+        Handles:
+        - Comma-separated strings: "http://localhost:3000,http://localhost:8080"
+        - Wildcard: "*"
+        - Empty strings: defaults to wildcard
+        - Already parsed lists: returns as-is
+        
+        Returns:
+            List[str]: Always returns a list of strings
+        """
+        # Handle None or empty string
+        if v is None or (isinstance(v, str) and not v.strip()):
+            return ["*"]
+        
+        # Handle string input (comma-separated or wildcard)
         if isinstance(v, str):
-            return [origin.strip() for origin in v.split(",")]
-        return v
+            v = v.strip()
+            # Handle wildcard
+            if v == "*":
+                return ["*"]
+            # Handle comma-separated list
+            if "," in v:
+                origins = [origin.strip() for origin in v.split(",") if origin.strip()]
+                return origins if origins else ["*"]
+            # Single value
+            return [v] if v else ["*"]
+        
+        # Already a list
+        if isinstance(v, list):
+            return v
+        
+        # Fallback
+        return ["*"]
 
     # ==========================================================================
     # Database Configuration (for user storage - SQLite by default)

@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import streamlit as st
+from streamlit_folium import st_folium
+import folium
 
 # Defaults aligned with src/models/test_features.json
 DEFAULTS = {
@@ -44,17 +46,86 @@ DEFAULTS = {
 
 KEY_PREFIX = "pred_"
 
+# Export for use in other modules
+__all__ = ["render_prediction_form", "render_current_coordinates_display", "KEY_PREFIX", "DEFAULTS"]
 
-def render_prediction_form() -> dict:
+
+def render_current_coordinates_display(
+    address_coords: dict | None = None,
+    geocoding_available: bool = True,
+) -> tuple[float, float]:
+    """
+    Display current coordinates (read-only) and initialize session state.
+    
+    Coordinates can be set via:
+    - Address geocoding (if available)
+    - Map click interaction
+    
+    Args:
+        address_coords: Optional dict with latitude and longitude from address geocoding
+        geocoding_available: Whether geocoding service is available
+        
+    Returns:
+        Tuple of (latitude, longitude) values
+    """
+    # Determine default lat/long values
+    default_lat = float(address_coords.get("latitude", DEFAULTS["lat"])) if address_coords else float(DEFAULTS["lat"])
+    default_long = float(address_coords.get("longitude", DEFAULTS["long"])) if address_coords else float(DEFAULTS["long"])
+
+    # Initialize session state if not set
+    if f"{KEY_PREFIX}lat" not in st.session_state:
+        st.session_state[f"{KEY_PREFIX}lat"] = default_lat
+    if f"{KEY_PREFIX}long" not in st.session_state:
+        st.session_state[f"{KEY_PREFIX}long"] = default_long
+
+    # Update session state with geocoded coordinates if available
+    if address_coords and address_coords.get("latitude") and address_coords.get("longitude"):
+        geocoded_lat = float(address_coords["latitude"])
+        geocoded_long = float(address_coords["longitude"])
+        st.session_state[f"{KEY_PREFIX}lat"] = geocoded_lat
+        st.session_state[f"{KEY_PREFIX}long"] = geocoded_long
+
+    # Display current coordinates (read-only) - no heading
+    current_lat = st.session_state.get(f"{KEY_PREFIX}lat", default_lat)
+    current_long = st.session_state.get(f"{KEY_PREFIX}long", default_long)
+    
+    col1, col2 = st.columns(2)
+    with col1:
+        st.metric("Latitude", f"{current_lat:.6f}")
+    with col2:
+        st.metric("Longitude", f"{current_long:.6f}")
+    
+    st.caption("💡 Click on the map to set coordinates")
+    
+    return current_lat, current_long
+
+
+def render_prediction_form(
+    address_coords: dict | None = None,
+    geocoding_available: bool = True,
+) -> dict:
     """
     Render inputs and return current feature dict for POST /api/v1/predict/.
     Call when user clicks Predict; dict is built from current widget values.
+
+    Args:
+        address_coords: Optional dict with latitude and longitude from address geocoding
+        geocoding_available: Whether geocoding service is available (shows/hides fallback)
+
+    Returns:
+        Dict of feature values for prediction API
     """
     st.subheader("Incident details")
+
+    # Get lat/long from session state (updated by manual coordinates fallback or geocoding)
+    default_lat = float(address_coords.get("latitude", DEFAULTS["lat"])) if address_coords else float(DEFAULTS["lat"])
+    default_long = float(address_coords.get("longitude", DEFAULTS["long"])) if address_coords else float(DEFAULTS["long"])
+    lat = float(st.session_state.get(f"{KEY_PREFIX}lat", default_lat))
+    long = float(st.session_state.get(f"{KEY_PREFIX}long", default_long))
+
+    st.markdown("---")
     c1, c2 = st.columns(2)
     with c1:
-        lat = st.number_input("Latitude", value=float(DEFAULTS["lat"]), format="%.4f", key=f"{KEY_PREFIX}lat")
-        long = st.number_input("Longitude", value=float(DEFAULTS["long"]), format="%.4f", key=f"{KEY_PREFIX}long")
         dep = st.number_input("Department (dep)", value=DEFAULTS["dep"], min_value=1, max_value=99, key=f"{KEY_PREFIX}dep")
         com = st.number_input("Commune (com)", value=DEFAULTS["com"], min_value=1000, key=f"{KEY_PREFIX}com")
     with c2:
