@@ -321,20 +321,6 @@ def render_prediction_form(
             index=list(ATM_OPTIONS.keys()).index(DEFAULTS["atm"]) if DEFAULTS["atm"] in ATM_OPTIONS else 0,
             key=f"{KEY_PREFIX}atm"
         )
-        agg_ = st.selectbox(
-            "Urban Area",
-            options=list(AGG_OPTIONS.keys()),
-            format_func=lambda x: AGG_OPTIONS[x],
-            index=list(AGG_OPTIONS.keys()).index(DEFAULTS["agg_"]) if DEFAULTS["agg_"] in AGG_OPTIONS else 0,
-            key=f"{KEY_PREFIX}agg_"
-        )
-        int_ = st.selectbox(
-            "Intersection Type",
-            options=list(INT_OPTIONS.keys()),
-            format_func=lambda x: INT_OPTIONS[x],
-            index=list(INT_OPTIONS.keys()).index(DEFAULTS["int"]) if DEFAULTS["int"] in INT_OPTIONS else 0,
-            key=f"{KEY_PREFIX}int"
-        )
     
     # ========== VICTIM INFORMATION & VEHICLE INFORMATION ==========
     v1, v2 = st.columns(2)
@@ -448,6 +434,13 @@ def render_prediction_form(
             min_value=0,
             key=f"{KEY_PREFIX}nb_vehicules"
         )
+        situ = st.selectbox(
+            "Situation",
+            options=list(SITU_OPTIONS.keys()),
+            format_func=lambda x: SITU_OPTIONS[x],
+            index=list(SITU_OPTIONS.keys()).index(DEFAULTS["situ"]) if DEFAULTS["situ"] in SITU_OPTIONS else 0,
+            key=f"{KEY_PREFIX}situ"
+        )
     
     # ========== ROAD/LOCATION CHARACTERISTICS & ROAD SURFACE & INFRASTRUCTURE ==========
     r1, r2 = st.columns(2)
@@ -516,19 +509,26 @@ def render_prediction_form(
     
     with r2:
         st.markdown("### 🏗️ Road Surface & Infrastructure")
+        agg_ = st.selectbox(
+            "Urban Area",
+            options=list(AGG_OPTIONS.keys()),
+            format_func=lambda x: AGG_OPTIONS[x],
+            index=list(AGG_OPTIONS.keys()).index(DEFAULTS["agg_"]) if DEFAULTS["agg_"] in AGG_OPTIONS else 0,
+            key=f"{KEY_PREFIX}agg_"
+        )
+        int_ = st.selectbox(
+            "Intersection Type",
+            options=list(INT_OPTIONS.keys()),
+            format_func=lambda x: INT_OPTIONS[x],
+            index=list(INT_OPTIONS.keys()).index(DEFAULTS["int"]) if DEFAULTS["int"] in INT_OPTIONS else 0,
+            key=f"{KEY_PREFIX}int"
+        )
         surf = st.selectbox(
             "Road Surface Condition",
             options=list(SURF_OPTIONS.keys()),
             format_func=lambda x: SURF_OPTIONS[x],
             index=list(SURF_OPTIONS.keys()).index(DEFAULTS["surf"]) if DEFAULTS["surf"] in SURF_OPTIONS else 0,
             key=f"{KEY_PREFIX}surf"
-        )
-        situ = st.selectbox(
-            "Situation",
-            options=list(SITU_OPTIONS.keys()),
-            format_func=lambda x: SITU_OPTIONS[x],
-            index=list(SITU_OPTIONS.keys()).index(DEFAULTS["situ"]) if DEFAULTS["situ"] in SITU_OPTIONS else 0,
-            key=f"{KEY_PREFIX}situ"
         )
         infra = st.number_input(
             "Infrastructure",
