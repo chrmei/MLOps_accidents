@@ -1,10 +1,13 @@
 """JWT-aware HTTP client for backend API."""
 from __future__ import annotations
 
+import logging
 import streamlit as st
 import httpx
 
 from ..auth import TOKEN_KEY, get_api_base
+
+logger = logging.getLogger(__name__)
 
 
 def get_client() -> httpx.Client | None:
@@ -103,7 +106,39 @@ def check_geocode_health() -> bool:
     Returns:
         True if service is healthy, False otherwise
     """
-    resp = get("/api/v1/geocode/health")
-    if resp is None:
+    try:
+        resp = get("/api/v1/geocode/health")
+        if resp is None:
+            logger.warning(
+                "Geocoding service health check failed: No response (likely not authenticated)"
+            )
+            return False
+        
+        if resp.status_code == 200:
+            logger.debug("Geocoding service health check passed")
+            return True
+        else:
+            # Log detailed error information
+            error_detail = "Unknown error"
+            try:
+                error_data = resp.json()
+                error_detail = error_data.get("detail", str(resp.text))
+            except Exception:
+                error_detail = f"HTTP {resp.status_code}: {resp.text[:200]}"
+            
+            logger.warning(
+                f"Geocoding service health check failed: HTTP {resp.status_code} - {error_detail}"
+            )
+            return False
+    except httpx.RequestError as e:
+        logger.error(
+            f"Geocoding service health check failed: Request error - {type(e).__name__}: {e}",
+            exc_info=True
+        )
         return False
-    return resp.status_code == 200
+    except Exception as e:
+        logger.error(
+            f"Geocoding service health check failed: Unexpected error - {type(e).__name__}: {e}",
+            exc_info=True
+        )
+        return False
