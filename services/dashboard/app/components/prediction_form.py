@@ -177,8 +177,63 @@ PLAN_OPTIONS = {
     4: "S-curve"
 }
 
+PLACE_OPTIONS = {
+    1: "Driver seat",
+    2: "Front passenger seat",
+    3: "Rear seat (right)",
+    4: "Rear seat (left)",
+    5: "Rear seat (center)",
+    6: "Other position 1",
+    7: "Other position 2",
+    8: "Other position 3",
+    9: "Other position 4",
+    10: "Not in vehicle / Outside"
+}
+
+SECU1_OPTIONS = {
+    -1: "Unknown",
+    0: "None",
+    1: "Safety belt",
+    2: "Helmet",
+    3: "Child safety seat",
+    4: "Airbag (deployed)",
+    5: "Reflective vest",
+    6: "Other equipment 1",
+    7: "Other equipment 2",
+    8: "Other equipment 3",
+    9: "Other equipment 4"
+}
+
+LOCP_OPTIONS = {
+    -1: "Unknown",
+    0: "Not a pedestrian / Not applicable",
+    1: "On sidewalk",
+    2: "On pedestrian crossing",
+    3: "On road (not crossing)",
+    4: "On emergency stop band",
+    5: "On cycle path",
+    6: "On other special lane",
+    7: "On parking lot",
+    8: "Other location",
+    9: "Not specified"
+}
+
+ACTP_OPTIONS = {
+    -1: "Unknown",
+    0: "Not applicable / Not a pedestrian",
+    "A": "Moving towards vehicle",
+    "B": "Moving away from vehicle"
+}
+
+ETATP_OPTIONS = {
+    -1: "Unknown",
+    1: "Standing",
+    2: "Moving",
+    3: "Other state"
+}
+
 # Export for use in other modules
-__all__ = ["render_prediction_form", "render_current_coordinates_display", "KEY_PREFIX", "DEFAULTS", "LUM_OPTIONS", "ATM_OPTIONS"]
+__all__ = ["render_prediction_form", "render_current_coordinates_display", "KEY_PREFIX", "DEFAULTS", "LUM_OPTIONS", "ATM_OPTIONS", "PLACE_OPTIONS", "SECU1_OPTIONS", "LOCP_OPTIONS", "ACTP_OPTIONS", "ETATP_OPTIONS"]
 
 
 def render_current_coordinates_display(
@@ -505,43 +560,113 @@ def render_prediction_form(
             key=f"{KEY_PREFIX}an_nais",
             help="Year of birth of the victim"
         )
-        place = st.number_input(
+        place_options_list = list(PLACE_OPTIONS.keys())
+        default_place = DEFAULTS["place"]
+        if f"{KEY_PREFIX}place" in st.session_state:
+            session_place = st.session_state[f"{KEY_PREFIX}place"]
+            if session_place in place_options_list:
+                default_place = session_place
+            else:
+                st.session_state[f"{KEY_PREFIX}place"] = default_place
+        if f"{KEY_PREFIX}place" not in st.session_state or st.session_state[f"{KEY_PREFIX}place"] not in place_options_list:
+            st.session_state[f"{KEY_PREFIX}place"] = default_place
+        place_index = place_options_list.index(default_place) if default_place in place_options_list else 0
+        place = st.selectbox(
             "Position in Vehicle",
-            value=DEFAULTS["place"],
-            min_value=1,
-            max_value=20,
+            options=place_options_list,
+            format_func=lambda x: PLACE_OPTIONS[x],
+            index=place_index,
             key=f"{KEY_PREFIX}place",
-            help="Position of the user in the vehicle (1-20)"
+            help="Position of the user in the vehicle"
         )
-        secu1 = st.number_input(
+        secu1_options_list = list(SECU1_OPTIONS.keys())
+        default_secu1 = int(DEFAULTS["secu1"])
+        if f"{KEY_PREFIX}secu1" in st.session_state:
+            session_secu1 = st.session_state[f"{KEY_PREFIX}secu1"]
+            if session_secu1 in secu1_options_list:
+                default_secu1 = session_secu1
+            else:
+                st.session_state[f"{KEY_PREFIX}secu1"] = default_secu1
+        if f"{KEY_PREFIX}secu1" not in st.session_state or st.session_state[f"{KEY_PREFIX}secu1"] not in secu1_options_list:
+            st.session_state[f"{KEY_PREFIX}secu1"] = default_secu1
+        secu1_index = secu1_options_list.index(default_secu1) if default_secu1 in secu1_options_list else 0
+        secu1 = st.selectbox(
             "Safety Equipment",
-            value=int(DEFAULTS["secu1"]),
-            min_value=-1,
-            max_value=9,
+            options=secu1_options_list,
+            format_func=lambda x: SECU1_OPTIONS[x],
+            index=secu1_index,
             key=f"{KEY_PREFIX}secu1",
-            help="Type of safety equipment used (-1: Unknown, 0: None, 1-9: Various equipment)"
+            help="Type of safety equipment used"
         )
-        locp = st.number_input(
+        locp_options_list = list(LOCP_OPTIONS.keys())
+        default_locp = DEFAULTS["locp"]
+        if f"{KEY_PREFIX}locp" in st.session_state:
+            session_locp = st.session_state[f"{KEY_PREFIX}locp"]
+            if session_locp in locp_options_list:
+                default_locp = session_locp
+            else:
+                st.session_state[f"{KEY_PREFIX}locp"] = default_locp
+        if f"{KEY_PREFIX}locp" not in st.session_state or st.session_state[f"{KEY_PREFIX}locp"] not in locp_options_list:
+            st.session_state[f"{KEY_PREFIX}locp"] = default_locp
+        locp_index = locp_options_list.index(default_locp) if default_locp in locp_options_list else 0
+        locp = st.selectbox(
             "Pedestrian Location",
-            value=DEFAULTS["locp"],
-            min_value=-1,
-            max_value=9,
+            options=locp_options_list,
+            format_func=lambda x: LOCP_OPTIONS[x],
+            index=locp_index,
             key=f"{KEY_PREFIX}locp",
-            help="Location of pedestrian if applicable (-1: Unknown, 0: Not pedestrian, 1-9: Various locations)"
+            help="Location of pedestrian if applicable"
         )
-        actp_input = st.text_input(
+        actp_options_list = list(ACTP_OPTIONS.keys())
+        # Handle default value conversion: 0 stays 0, -1 stays -1, but need to handle if default is A/B equivalent
+        default_actp = DEFAULTS["actp"]
+        # Convert numeric defaults to proper types for ACTP_OPTIONS
+        if default_actp == 0:
+            default_actp = 0
+        elif default_actp == -1:
+            default_actp = -1
+        elif default_actp == "A" or default_actp == 10:
+            default_actp = "A"
+        elif default_actp == "B" or default_actp == 11:
+            default_actp = "B"
+        else:
+            default_actp = 0  # Fallback to 0
+        
+        if f"{KEY_PREFIX}actp" in st.session_state:
+            session_actp = st.session_state[f"{KEY_PREFIX}actp"]
+            if session_actp in actp_options_list:
+                default_actp = session_actp
+            else:
+                st.session_state[f"{KEY_PREFIX}actp"] = default_actp
+        if f"{KEY_PREFIX}actp" not in st.session_state or st.session_state[f"{KEY_PREFIX}actp"] not in actp_options_list:
+            st.session_state[f"{KEY_PREFIX}actp"] = default_actp
+        actp_index = actp_options_list.index(default_actp) if default_actp in actp_options_list else 0
+        actp_selected = st.selectbox(
             "Pedestrian Action",
-            value=str(DEFAULTS["actp"]),
+            options=actp_options_list,
+            format_func=lambda x: ACTP_OPTIONS[x],
+            index=actp_index,
             key=f"{KEY_PREFIX}actp",
-            help="Action of pedestrian (-1, 0, or A/B)"
+            help="Action of pedestrian"
         )
-        etatp = st.number_input(
+        etatp_options_list = list(ETATP_OPTIONS.keys())
+        default_etatp = DEFAULTS["etatp"]
+        if f"{KEY_PREFIX}etatp" in st.session_state:
+            session_etatp = st.session_state[f"{KEY_PREFIX}etatp"]
+            if session_etatp in etatp_options_list:
+                default_etatp = session_etatp
+            else:
+                st.session_state[f"{KEY_PREFIX}etatp"] = default_etatp
+        if f"{KEY_PREFIX}etatp" not in st.session_state or st.session_state[f"{KEY_PREFIX}etatp"] not in etatp_options_list:
+            st.session_state[f"{KEY_PREFIX}etatp"] = default_etatp
+        etatp_index = etatp_options_list.index(default_etatp) if default_etatp in etatp_options_list else 0
+        etatp = st.selectbox(
             "Pedestrian State",
-            value=DEFAULTS["etatp"],
-            min_value=-1,
-            max_value=3,
+            options=etatp_options_list,
+            format_func=lambda x: ETATP_OPTIONS[x],
+            index=etatp_index,
             key=f"{KEY_PREFIX}etatp",
-            help="State of pedestrian (-1: Unknown, 1-3: Various states)"
+            help="State of pedestrian"
         )
     
     with v2:
@@ -702,17 +827,8 @@ def render_prediction_form(
             key=f"{KEY_PREFIX}col"
         )
     
-    # Convert actp to appropriate type
-    actp_value = DEFAULTS["actp"]
-    try:
-        if actp_input.isdigit():
-            actp_value = int(actp_input)
-        elif actp_input.upper() in ['A', 'B']:
-            actp_value = actp_input.upper()
-        elif actp_input == '-1':
-            actp_value = -1
-    except:
-        actp_value = DEFAULTS["actp"]
+    # actp_selected is already the correct value from dropdown (-1, 0, "A", or "B")
+    actp_value = actp_selected
     
     return {
         "place": place,
