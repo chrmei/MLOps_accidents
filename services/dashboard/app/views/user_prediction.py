@@ -81,9 +81,17 @@ def render():
             returned_objects=["last_object_clicked", "last_clicked"],
         )
 
-        # Show selected address below the map (if available)
+        # Tip message
+        st.caption("💡 Click on the map to set coordinates")
+        
+        # Show selected address and GPS coordinates below the tip
         if address_coords and address_coords.get("address"):
             st.caption(f"📍 **Selected:** {address_coords.get('address', 'Unknown address')}")
+        
+        # Display GPS coordinates
+        current_lat = st.session_state.get(f"{KEY_PREFIX}lat", 48.8584)
+        current_long = st.session_state.get(f"{KEY_PREFIX}long", 2.2945)
+        st.caption(f"**GPS:** {current_lat:.6f}, {current_long:.6f}")
 
         # Attribution required by Nominatim Usage Policy (below map)
         st.caption(

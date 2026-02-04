@@ -213,17 +213,9 @@ def render_current_coordinates_display(
         st.session_state[f"{KEY_PREFIX}lat"] = geocoded_lat
         st.session_state[f"{KEY_PREFIX}long"] = geocoded_long
 
-    # Display current coordinates (read-only) - smaller format
+    # Get current coordinates (coordinates are displayed below the map, not here)
     current_lat = st.session_state.get(f"{KEY_PREFIX}lat", default_lat)
     current_long = st.session_state.get(f"{KEY_PREFIX}long", default_long)
-    
-    col1, col2 = st.columns(2)
-    with col1:
-        st.caption(f"**Lat:** {current_lat:.6f}")
-    with col2:
-        st.caption(f"**Lon:** {current_long:.6f}")
-    
-    st.caption("💡 Click on the map to set coordinates")
     
     return current_lat, current_long
 
