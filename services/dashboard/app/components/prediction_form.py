@@ -50,6 +50,20 @@ DEFAULTS = {
 
 KEY_PREFIX = "pred_"
 
+
+def get_sorted_options(options_dict: dict) -> list:
+    """
+    Sort options by their display labels alphabetically.
+    
+    Args:
+        options_dict: Dictionary mapping option keys to display labels
+        
+    Returns:
+        List of option keys sorted by their labels
+    """
+    return sorted(options_dict.keys(), key=lambda k: options_dict[k].lower())
+
+
 # Field value mappings for user-friendly display
 LUM_OPTIONS = {
     1: "Full daylight",
@@ -183,25 +197,25 @@ PLACE_OPTIONS = {
     3: "Rear seat (right)",
     4: "Rear seat (left)",
     5: "Rear seat (center)",
-    6: "Other position 1",
-    7: "Other position 2",
-    8: "Other position 3",
-    9: "Other position 4",
+    6: "Front seat (center)",
+    7: "Rear seat (left, 3rd row)",
+    8: "Rear seat (center, 3rd row)",
+    9: "Rear seat (right, 3rd row)",
     10: "Not in vehicle / Outside"
 }
 
 SECU1_OPTIONS = {
-    -1: "Unknown",
-    0: "None",
-    1: "Safety belt",
+    -1: "Not specified",
+    0: "No equipment",
+    1: "Seatbelt",
     2: "Helmet",
-    3: "Child safety seat",
-    4: "Airbag (deployed)",
-    5: "Reflective vest",
-    6: "Other equipment 1",
-    7: "Other equipment 2",
-    8: "Other equipment 3",
-    9: "Other equipment 4"
+    3: "Child restraint",
+    4: "Reflective vest",
+    5: "Airbag (2/3-wheeler)",
+    6: "Gloves",
+    7: "Gloves + Airbag",
+    8: "Non-determinable",
+    9: "Other"
 }
 
 LOCP_OPTIONS = {
@@ -232,8 +246,83 @@ ETATP_OPTIONS = {
     3: "Other state"
 }
 
+CATV_OPTIONS = {
+    0: "Unknown / Not specified",
+    1: "Bicycle",
+    2: "Moped < 50 cm³",
+    3: "Microcar / License-free car",
+    7: "Passenger Car",
+    10: "Light Commercial Vehicle",
+    13: "Heavy Truck (3.5T < GVW <= 7.5T)",
+    14: "Heavy Truck > 7.5T",
+    15: "Heavy Truck > 3.5T + Trailer",
+    16: "Road Tractor (unit only)",
+    17: "Road Tractor + Semi-trailer",
+    20: "Special Vehicle",
+    21: "Agricultural Tractor",
+    30: "Scooter < 50 cm³",
+    31: "Motorcycle > 50 cm³ and <= 125 cm³",
+    32: "Scooter > 50 cm³ and <= 125 cm³",
+    33: "Motorcycle > 125 cm³",
+    34: "Scooter > 125 cm³",
+    35: "Quad bike <= 50 cm³",
+    36: "Quad bike > 50 cm³",
+    37: "Bus",
+    38: "Coach",
+    39: "Train",
+    40: "Tramway",
+    50: "E-Scooter / Personal Motorized Transporter",
+    60: "Non-motorized Personal Transporter",
+    80: "E-Bike",
+    99: "Other vehicle"
+}
+
+MOTOR_OPTIONS = {
+    -1: "Not specified",
+    0: "Unknown",
+    1: "Hydrocarbons",
+    2: "Hybrid electric",
+    3: "Electric",
+    4: "Hydrogen",
+    5: "Human",
+    6: "Other"
+}
+
+OBSM_OPTIONS = {
+    -1: "Not specified",
+    0: "None",
+    1: "Pedestrian",
+    2: "Vehicle",
+    4: "Rail Vehicle",
+    5: "Domestic Animal",
+    6: "Wild Animal",
+    9: "Other"
+}
+
+OBS_OPTIONS = {
+    -1: "Not specified",
+    0: "None",
+    1: "Parked vehicle",
+    2: "Tree",
+    3: "Metal guardrail",
+    4: "Concrete barrier",
+    5: "Other barrier",
+    6: "Building / Wall / Bridge pier",
+    7: "Sign support / Emergency post",
+    8: "Post / Pole",
+    9: "Urban furniture",
+    10: "Parapet",
+    11: "Island / Refuge / Bollard",
+    12: "Curb",
+    13: "Ditch / Embankment / Rock face",
+    14: "Other fixed obstacle (on road)",
+    15: "Other fixed obstacle (sidewalk)",
+    16: "Roadway exit without obstacle",
+    17: "Culvert head / Pipe end"
+}
+
 # Export for use in other modules
-__all__ = ["render_prediction_form", "render_current_coordinates_display", "KEY_PREFIX", "DEFAULTS", "LUM_OPTIONS", "ATM_OPTIONS", "PLACE_OPTIONS", "SECU1_OPTIONS", "LOCP_OPTIONS", "ACTP_OPTIONS", "ETATP_OPTIONS"]
+__all__ = ["render_prediction_form", "render_current_coordinates_display", "KEY_PREFIX", "DEFAULTS", "LUM_OPTIONS", "ATM_OPTIONS", "PLACE_OPTIONS", "SECU1_OPTIONS", "LOCP_OPTIONS", "ACTP_OPTIONS", "ETATP_OPTIONS", "CATV_OPTIONS", "MOTOR_OPTIONS", "OBSM_OPTIONS", "OBS_OPTIONS"]
 
 
 def render_current_coordinates_display(
@@ -418,11 +507,7 @@ def render_prediction_form(
     # ========== LOCATION & DATE/TIME ==========
     c1, c2 = st.columns(2)
     with c1:
-        loc_col1, loc_col2 = st.columns([20, 1])
-        with loc_col1:
-            st.markdown("### 📍 Location & Date-Time")
-        with loc_col2:
-            st.markdown("ℹ️", help="Fields are automatically populated after searching for an address or selecting a location on the map")
+        st.markdown("### 📍 Location & Date-Time")
         dep = st.number_input(
             "Department Code",
             value=st.session_state.get(dep_key, DEFAULTS["dep"]),
@@ -461,15 +546,11 @@ def render_prediction_form(
     
     with c2:
         # ========== ENVIRONMENTAL CONDITIONS ==========
-        env_col1, env_col2 = st.columns([20, 1])
-        with env_col1:
-            st.markdown("### 🌤️ Environmental Conditions")
-        with env_col2:
-            st.markdown("ℹ️", help="Fields are automatically populated after searching for an address or selecting a location on the map")
+        st.markdown("### 🌤️ Environmental Conditions")
         
-        # Get options lists
-        lum_options_list = list(LUM_OPTIONS.keys())
-        atm_options_list = list(ATM_OPTIONS.keys())
+        # Get options lists (sorted alphabetically)
+        lum_options_list = get_sorted_options(LUM_OPTIONS)
+        atm_options_list = get_sorted_options(ATM_OPTIONS)
         
         # Determine default lum value (prioritize session state, then weather_data, then default)
         # Session state is the source of truth after weather data is fetched
@@ -537,13 +618,14 @@ def render_prediction_form(
     v1, v2 = st.columns(2)
     with v1:
         st.markdown("### 👤 Victim Information")
+        catu_options_list = get_sorted_options(CATU_OPTIONS)
         catu = st.selectbox(
-            "User Category",
-            options=list(CATU_OPTIONS.keys()),
+            "Victim Category",
+            options=catu_options_list,
             format_func=lambda x: CATU_OPTIONS[x],
-            index=list(CATU_OPTIONS.keys()).index(DEFAULTS["catu"]) if DEFAULTS["catu"] in CATU_OPTIONS else 0,
+            index=catu_options_list.index(DEFAULTS["catu"]) if DEFAULTS["catu"] in catu_options_list else 0,
             key=f"{KEY_PREFIX}catu",
-            help="Category of the user involved in the accident"
+            help="Category of the victim involved in the accident"
         )
         sexe = st.selectbox(
             "Gender",
@@ -560,7 +642,7 @@ def render_prediction_form(
             key=f"{KEY_PREFIX}an_nais",
             help="Year of birth of the victim"
         )
-        place_options_list = list(PLACE_OPTIONS.keys())
+        place_options_list = get_sorted_options(PLACE_OPTIONS)
         default_place = DEFAULTS["place"]
         if f"{KEY_PREFIX}place" in st.session_state:
             session_place = st.session_state[f"{KEY_PREFIX}place"]
@@ -577,9 +659,9 @@ def render_prediction_form(
             format_func=lambda x: PLACE_OPTIONS[x],
             index=place_index,
             key=f"{KEY_PREFIX}place",
-            help="Position of the user in the vehicle"
+            help="Position of the victim in the vehicle"
         )
-        secu1_options_list = list(SECU1_OPTIONS.keys())
+        secu1_options_list = get_sorted_options(SECU1_OPTIONS)
         default_secu1 = int(DEFAULTS["secu1"])
         if f"{KEY_PREFIX}secu1" in st.session_state:
             session_secu1 = st.session_state[f"{KEY_PREFIX}secu1"]
@@ -598,7 +680,7 @@ def render_prediction_form(
             key=f"{KEY_PREFIX}secu1",
             help="Type of safety equipment used"
         )
-        locp_options_list = list(LOCP_OPTIONS.keys())
+        locp_options_list = get_sorted_options(LOCP_OPTIONS)
         default_locp = DEFAULTS["locp"]
         if f"{KEY_PREFIX}locp" in st.session_state:
             session_locp = st.session_state[f"{KEY_PREFIX}locp"]
@@ -617,7 +699,7 @@ def render_prediction_form(
             key=f"{KEY_PREFIX}locp",
             help="Location of pedestrian if applicable"
         )
-        actp_options_list = list(ACTP_OPTIONS.keys())
+        actp_options_list = get_sorted_options(ACTP_OPTIONS)
         # Handle default value conversion: 0 stays 0, -1 stays -1, but need to handle if default is A/B equivalent
         default_actp = DEFAULTS["actp"]
         # Convert numeric defaults to proper types for ACTP_OPTIONS
@@ -649,7 +731,7 @@ def render_prediction_form(
             key=f"{KEY_PREFIX}actp",
             help="Action of pedestrian"
         )
-        etatp_options_list = list(ETATP_OPTIONS.keys())
+        etatp_options_list = get_sorted_options(ETATP_OPTIONS)
         default_etatp = DEFAULTS["etatp"]
         if f"{KEY_PREFIX}etatp" in st.session_state:
             session_etatp = st.session_state[f"{KEY_PREFIX}etatp"]
@@ -671,37 +753,81 @@ def render_prediction_form(
     
     with v2:
         st.markdown("### 🚗 Vehicle Information")
-        catv = st.number_input(
+        catv_options_list = get_sorted_options(CATV_OPTIONS)
+        default_catv = DEFAULTS["catv"]
+        if f"{KEY_PREFIX}catv" in st.session_state:
+            session_catv = st.session_state[f"{KEY_PREFIX}catv"]
+            if session_catv in catv_options_list:
+                default_catv = session_catv
+            else:
+                st.session_state[f"{KEY_PREFIX}catv"] = default_catv
+        if f"{KEY_PREFIX}catv" not in st.session_state or st.session_state[f"{KEY_PREFIX}catv"] not in catv_options_list:
+            st.session_state[f"{KEY_PREFIX}catv"] = default_catv
+        catv_index = catv_options_list.index(default_catv) if default_catv in catv_options_list else 0
+        catv = st.selectbox(
             "Vehicle Category",
-            value=DEFAULTS["catv"],
-            min_value=0,
-            max_value=20,
+            options=catv_options_list,
+            format_func=lambda x: CATV_OPTIONS[x],
+            index=catv_index,
             key=f"{KEY_PREFIX}catv",
-            help="Category of vehicle (0: Unknown, 1-20: Various vehicle types)"
+            help="Category of vehicle"
         )
-        motor = st.number_input(
+        motor_options_list = get_sorted_options(MOTOR_OPTIONS)
+        default_motor = DEFAULTS["motor"]
+        if f"{KEY_PREFIX}motor" in st.session_state:
+            session_motor = st.session_state[f"{KEY_PREFIX}motor"]
+            if session_motor in motor_options_list:
+                default_motor = session_motor
+            else:
+                st.session_state[f"{KEY_PREFIX}motor"] = default_motor
+        if f"{KEY_PREFIX}motor" not in st.session_state or st.session_state[f"{KEY_PREFIX}motor"] not in motor_options_list:
+            st.session_state[f"{KEY_PREFIX}motor"] = default_motor
+        motor_index = motor_options_list.index(default_motor) if default_motor in motor_options_list else 0
+        motor = st.selectbox(
             "Motor Type",
-            value=DEFAULTS["motor"],
-            min_value=-1,
-            max_value=6,
+            options=motor_options_list,
+            format_func=lambda x: MOTOR_OPTIONS[x],
+            index=motor_index,
             key=f"{KEY_PREFIX}motor",
-            help="Type of motor (-1: Unknown, 0: None, 1-6: Various motor types)"
+            help="This variable describes the propulsion type of the vehicle. It is essential for distinguishing between silent vehicles (Electric/Hybrid), traditional combustion engines, and new mobilities."
         )
-        obsm = st.number_input(
+        obsm_options_list = get_sorted_options(OBSM_OPTIONS)
+        default_obsm = DEFAULTS["obsm"]
+        if f"{KEY_PREFIX}obsm" in st.session_state:
+            session_obsm = st.session_state[f"{KEY_PREFIX}obsm"]
+            if session_obsm in obsm_options_list:
+                default_obsm = session_obsm
+            else:
+                st.session_state[f"{KEY_PREFIX}obsm"] = default_obsm
+        if f"{KEY_PREFIX}obsm" not in st.session_state or st.session_state[f"{KEY_PREFIX}obsm"] not in obsm_options_list:
+            st.session_state[f"{KEY_PREFIX}obsm"] = default_obsm
+        obsm_index = obsm_options_list.index(default_obsm) if default_obsm in obsm_options_list else 0
+        obsm = st.selectbox(
             "Obstacle Marker",
-            value=DEFAULTS["obsm"],
-            min_value=-1,
-            max_value=9,
+            options=obsm_options_list,
+            format_func=lambda x: OBSM_OPTIONS[x],
+            index=obsm_index,
             key=f"{KEY_PREFIX}obsm",
-            help="Obstacle marker type (-1: Unknown, 0: None, 1-9: Various markers)"
+            help="This variable describes the moving object that the vehicle hit."
         )
-        obs = st.number_input(
+        obs_options_list = get_sorted_options(OBS_OPTIONS)
+        default_obs = DEFAULTS["obs"]
+        if f"{KEY_PREFIX}obs" in st.session_state:
+            session_obs = st.session_state[f"{KEY_PREFIX}obs"]
+            if session_obs in obs_options_list:
+                default_obs = session_obs
+            else:
+                st.session_state[f"{KEY_PREFIX}obs"] = default_obs
+        if f"{KEY_PREFIX}obs" not in st.session_state or st.session_state[f"{KEY_PREFIX}obs"] not in obs_options_list:
+            st.session_state[f"{KEY_PREFIX}obs"] = default_obs
+        obs_index = obs_options_list.index(default_obs) if default_obs in obs_options_list else 0
+        obs = st.selectbox(
             "Obstacle",
-            value=DEFAULTS["obs"],
-            min_value=-1,
-            max_value=17,
+            options=obs_options_list,
+            format_func=lambda x: OBS_OPTIONS[x],
+            index=obs_index,
             key=f"{KEY_PREFIX}obs",
-            help="Type of obstacle (-1: Unknown, 0: None, 1-17: Various obstacles)"
+            help="This variable describes the stationary object that the vehicle hit. This is critical for \"Solo Vehicle\" accidents (single-vehicle accidents)."
         )
         nb_victim = st.number_input(
             "Number of Victims",
@@ -715,11 +841,12 @@ def render_prediction_form(
             min_value=0,
             key=f"{KEY_PREFIX}nb_vehicules"
         )
+        situ_options_list = get_sorted_options(SITU_OPTIONS)
         situ = st.selectbox(
             "Situation",
-            options=list(SITU_OPTIONS.keys()),
+            options=situ_options_list,
             format_func=lambda x: SITU_OPTIONS[x],
-            index=list(SITU_OPTIONS.keys()).index(DEFAULTS["situ"]) if DEFAULTS["situ"] in SITU_OPTIONS else 0,
+            index=situ_options_list.index(DEFAULTS["situ"]) if DEFAULTS["situ"] in situ_options_list else 0,
             key=f"{KEY_PREFIX}situ"
         )
     
@@ -727,18 +854,20 @@ def render_prediction_form(
     r1, r2 = st.columns(2)
     with r1:
         st.markdown("### 🛣️ Road & Location Characteristics")
+        catr_options_list = get_sorted_options(CATR_OPTIONS)
         catr = st.selectbox(
             "Road Category",
-            options=list(CATR_OPTIONS.keys()),
+            options=catr_options_list,
             format_func=lambda x: CATR_OPTIONS[x],
-            index=list(CATR_OPTIONS.keys()).index(DEFAULTS["catr"]) if DEFAULTS["catr"] in CATR_OPTIONS else 0,
+            index=catr_options_list.index(DEFAULTS["catr"]) if DEFAULTS["catr"] in catr_options_list else 0,
             key=f"{KEY_PREFIX}catr"
         )
+        circ_options_list = get_sorted_options(CIRC_OPTIONS)
         circ = st.selectbox(
             "Traffic Direction",
-            options=list(CIRC_OPTIONS.keys()),
+            options=circ_options_list,
             format_func=lambda x: CIRC_OPTIONS[x],
-            index=list(CIRC_OPTIONS.keys()).index(DEFAULTS["circ"]) if DEFAULTS["circ"] in CIRC_OPTIONS else 0,
+            index=circ_options_list.index(DEFAULTS["circ"]) if DEFAULTS["circ"] in circ_options_list else 0,
             key=f"{KEY_PREFIX}circ"
         )
         vma = st.number_input(
@@ -749,11 +878,12 @@ def render_prediction_form(
             key=f"{KEY_PREFIX}vma",
             help="Maximum authorized speed in km/h"
         )
+        vosp_options_list = get_sorted_options(VOSP_OPTIONS)
         vosp = st.selectbox(
             "Special Lane",
-            options=list(VOSP_OPTIONS.keys()),
+            options=vosp_options_list,
             format_func=lambda x: VOSP_OPTIONS[x],
-            index=list(VOSP_OPTIONS.keys()).index(DEFAULTS["vosp"]) if DEFAULTS["vosp"] in VOSP_OPTIONS else 0,
+            index=vosp_options_list.index(DEFAULTS["vosp"]) if DEFAULTS["vosp"] in vosp_options_list else 0,
             key=f"{KEY_PREFIX}vosp"
         )
         v1 = st.number_input(
@@ -764,18 +894,20 @@ def render_prediction_form(
             key=f"{KEY_PREFIX}v1",
             help="Number of traffic lanes (-1: Unknown, 0: Not specified, 1-9: Number of lanes)"
         )
+        prof_options_list = get_sorted_options(PROF_OPTIONS)
         prof = st.selectbox(
             "Road Profile",
-            options=list(PROF_OPTIONS.keys()),
+            options=prof_options_list,
             format_func=lambda x: PROF_OPTIONS[x],
-            index=list(PROF_OPTIONS.keys()).index(DEFAULTS["prof"]) if DEFAULTS["prof"] in PROF_OPTIONS else 0,
+            index=prof_options_list.index(DEFAULTS["prof"]) if DEFAULTS["prof"] in prof_options_list else 0,
             key=f"{KEY_PREFIX}prof"
         )
+        plan_options_list = get_sorted_options(PLAN_OPTIONS)
         plan = st.selectbox(
             "Road Plan",
-            options=list(PLAN_OPTIONS.keys()),
+            options=plan_options_list,
             format_func=lambda x: PLAN_OPTIONS[x],
-            index=list(PLAN_OPTIONS.keys()).index(DEFAULTS["plan"]) if DEFAULTS["plan"] in PLAN_OPTIONS else 0,
+            index=plan_options_list.index(DEFAULTS["plan"]) if DEFAULTS["plan"] in plan_options_list else 0,
             key=f"{KEY_PREFIX}plan"
         )
         larrout = st.number_input(
@@ -790,25 +922,28 @@ def render_prediction_form(
     
     with r2:
         st.markdown("### 🏗️ Road Surface & Infrastructure")
+        agg_options_list = get_sorted_options(AGG_OPTIONS)
         agg_ = st.selectbox(
             "Urban Area",
-            options=list(AGG_OPTIONS.keys()),
+            options=agg_options_list,
             format_func=lambda x: AGG_OPTIONS[x],
-            index=list(AGG_OPTIONS.keys()).index(DEFAULTS["agg_"]) if DEFAULTS["agg_"] in AGG_OPTIONS else 0,
+            index=agg_options_list.index(DEFAULTS["agg_"]) if DEFAULTS["agg_"] in agg_options_list else 0,
             key=f"{KEY_PREFIX}agg_"
         )
+        int_options_list = get_sorted_options(INT_OPTIONS)
         int_ = st.selectbox(
             "Intersection Type",
-            options=list(INT_OPTIONS.keys()),
+            options=int_options_list,
             format_func=lambda x: INT_OPTIONS[x],
-            index=list(INT_OPTIONS.keys()).index(DEFAULTS["int"]) if DEFAULTS["int"] in INT_OPTIONS else 0,
+            index=int_options_list.index(DEFAULTS["int"]) if DEFAULTS["int"] in int_options_list else 0,
             key=f"{KEY_PREFIX}int"
         )
+        surf_options_list = get_sorted_options(SURF_OPTIONS)
         surf = st.selectbox(
             "Road Surface Condition",
-            options=list(SURF_OPTIONS.keys()),
+            options=surf_options_list,
             format_func=lambda x: SURF_OPTIONS[x],
-            index=list(SURF_OPTIONS.keys()).index(DEFAULTS["surf"]) if DEFAULTS["surf"] in SURF_OPTIONS else 0,
+            index=surf_options_list.index(DEFAULTS["surf"]) if DEFAULTS["surf"] in surf_options_list else 0,
             key=f"{KEY_PREFIX}surf"
         )
         infra = st.number_input(
@@ -819,11 +954,12 @@ def render_prediction_form(
             key=f"{KEY_PREFIX}infra",
             help="Type of infrastructure (-1: Unknown, 0: None, 1-9: Various infrastructures)"
         )
+        col_options_list = get_sorted_options(COL_OPTIONS)
         col = st.selectbox(
             "Collision Type",
-            options=list(COL_OPTIONS.keys()),
+            options=col_options_list,
             format_func=lambda x: COL_OPTIONS[x],
-            index=list(COL_OPTIONS.keys()).index(DEFAULTS["col"]) if DEFAULTS["col"] in COL_OPTIONS else 0,
+            index=col_options_list.index(DEFAULTS["col"]) if DEFAULTS["col"] in col_options_list else 0,
             key=f"{KEY_PREFIX}col"
         )
     
