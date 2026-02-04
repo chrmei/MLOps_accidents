@@ -280,7 +280,7 @@ CATV_OPTIONS = {
 MOTOR_OPTIONS = {
     -1: "Not specified",
     0: "Unknown",
-    1: "Hydrocarbons",
+    1: "Combustion",
     2: "Hybrid electric",
     3: "Electric",
     4: "Hydrogen",
