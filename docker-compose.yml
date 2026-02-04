@@ -73,6 +73,8 @@ services:
         condition: service_healthy
       geocode:
         condition: service_healthy
+      weather:
+        condition: service_healthy
       docs:
         condition: service_healthy
     networks:
@@ -289,6 +291,36 @@ services:
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8005/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # ===========================================================================
+  # Weather Service - Weather and Solar Data for Lighting/Atmospheric Conditions
+  # ===========================================================================
+  weather:
+    build:
+      context: .
+      dockerfile: ./services/Dockerfile.python
+      target: weather_service
+    container_name: mlops-weather-service
+    environment:
+      - SERVICE_NAME=weather-service
+      - DEBUG=${DEBUG:-false}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY}
+      - JWT_ALGORITHM=${JWT_ALGORITHM:-HS256}
+      - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:3000,http://localhost:8080}
+      - PYTHONUNBUFFERED=1
+      - PYTHONWARNINGS=ignore
+    ports:
+      - "8006:8006"
+    networks:
+      - mlops-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8006/health"]
       interval: 30s
       timeout: 10s
       retries: 3

@@ -53,17 +53,6 @@ async def login(request: LoginRequest):
     """Authenticate user and return access token."""
     username = request.username
 
-    # Per-username login rate limit
-    if not check_rate_limit(
-        username,
-        settings.LOGIN_RATE_LIMIT_PER_USER,
-        settings.LOGIN_RATE_WINDOW_SECONDS,
-    ):
-        raise HTTPException(
-            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail="Too many login attempts for this username. Try again later.",
-        )
-
     # Account lockout after repeated failures
     locked, minutes_left = check_lockout(username)
     if locked:
@@ -73,10 +62,22 @@ async def login(request: LoginRequest):
             detail=f"Account temporarily locked. Try again after {minutes_left} minutes.",
         )
 
+    # Per-username login rate limit (only counts failed attempts)
+    if not check_rate_limit(
+        username,
+        settings.LOGIN_RATE_LIMIT_PER_USER,
+        settings.LOGIN_RATE_WINDOW_SECONDS,
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many failed login attempts for this username. Try again later.",
+        )
+
     user = authenticate_user(request.username, request.password)
-    record_rate_limit_request(username, settings.LOGIN_RATE_WINDOW_SECONDS)
 
     if not user:
+        # Only record rate limit for failed attempts
+        record_rate_limit_request(username, settings.LOGIN_RATE_WINDOW_SECONDS)
         record_failed_login(username)
         logger.info("Failed login for username: %s", username)
         raise HTTPException(
@@ -84,6 +85,7 @@ async def login(request: LoginRequest):
             detail="Invalid credentials",
         )
 
+    # Successful login: clear failed logins (rate limit not incremented)
     clear_failed_logins(username)
     access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = create_access_token(

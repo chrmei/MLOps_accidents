@@ -175,7 +175,7 @@ PLAN_OPTIONS = {
 }
 
 # Export for use in other modules
-__all__ = ["render_prediction_form", "render_current_coordinates_display", "KEY_PREFIX", "DEFAULTS"]
+__all__ = ["render_prediction_form", "render_current_coordinates_display", "KEY_PREFIX", "DEFAULTS", "LUM_OPTIONS", "ATM_OPTIONS"]
 
 
 def render_current_coordinates_display(
@@ -213,15 +213,15 @@ def render_current_coordinates_display(
         st.session_state[f"{KEY_PREFIX}lat"] = geocoded_lat
         st.session_state[f"{KEY_PREFIX}long"] = geocoded_long
 
-    # Display current coordinates (read-only) - no heading
+    # Display current coordinates (read-only) - smaller format
     current_lat = st.session_state.get(f"{KEY_PREFIX}lat", default_lat)
     current_long = st.session_state.get(f"{KEY_PREFIX}long", default_long)
     
     col1, col2 = st.columns(2)
     with col1:
-        st.metric("Latitude", f"{current_lat:.6f}")
+        st.caption(f"**Lat:** {current_lat:.6f}")
     with col2:
-        st.metric("Longitude", f"{current_long:.6f}")
+        st.caption(f"**Lon:** {current_long:.6f}")
     
     st.caption("💡 Click on the map to set coordinates")
     
@@ -231,20 +231,21 @@ def render_current_coordinates_display(
 def render_prediction_form(
     address_coords: dict | None = None,
     geocoding_available: bool = True,
+    weather_data: dict | None = None,
 ) -> dict:
     """
     Render inputs and return current feature dict for POST /api/v1/predict/.
     Call when user clicks Predict; dict is built from current widget values.
-
+    
     Args:
         address_coords: Optional dict with latitude and longitude from address geocoding
         geocoding_available: Whether geocoding service is available (shows/hides fallback)
-
+        weather_data: Optional dict with weather conditions (lum, atm) to auto-populate fields
+        
     Returns:
         Dict of feature values for prediction API
     """
-    st.subheader("Incident Details")
-    
+
     # Get lat/long from session state (updated by manual coordinates fallback or geocoding)
     default_lat = float(address_coords.get("latitude", DEFAULTS["lat"])) if address_coords else float(DEFAULTS["lat"])
     default_long = float(address_coords.get("longitude", DEFAULTS["long"])) if address_coords else float(DEFAULTS["long"])
@@ -307,18 +308,70 @@ def render_prediction_form(
     with c2:
         # ========== ENVIRONMENTAL CONDITIONS ==========
         st.markdown("### 🌤️ Environmental Conditions")
+        
+        # Get options lists
+        lum_options_list = list(LUM_OPTIONS.keys())
+        atm_options_list = list(ATM_OPTIONS.keys())
+        
+        # Determine default lum value (prioritize session state, then weather_data, then default)
+        # Session state is the source of truth after weather data is fetched
+        default_lum = DEFAULTS["lum"]
+        if f"{KEY_PREFIX}lum" in st.session_state:
+            session_lum = st.session_state[f"{KEY_PREFIX}lum"]
+            # Validate that session state value is a valid option
+            if session_lum in lum_options_list:
+                default_lum = session_lum
+            else:
+                # Invalid value, reset to default
+                st.session_state[f"{KEY_PREFIX}lum"] = default_lum
+        elif weather_data and weather_data.get("lum") is not None:
+            weather_lum = weather_data["lum"]
+            # Validate that weather data value is a valid option
+            if weather_lum in lum_options_list:
+                default_lum = weather_lum
+                # Update session state for consistency
+                st.session_state[f"{KEY_PREFIX}lum"] = default_lum
+        
+        # Determine default atm value (prioritize session state, then weather_data, then default)
+        default_atm = DEFAULTS["atm"]
+        if f"{KEY_PREFIX}atm" in st.session_state:
+            session_atm = st.session_state[f"{KEY_PREFIX}atm"]
+            # Validate that session state value is a valid option
+            if session_atm in atm_options_list:
+                default_atm = session_atm
+            else:
+                # Invalid value, reset to default
+                st.session_state[f"{KEY_PREFIX}atm"] = default_atm
+        elif weather_data and weather_data.get("atm") is not None:
+            weather_atm = weather_data["atm"]
+            # Validate that weather data value is a valid option
+            if weather_atm in atm_options_list:
+                default_atm = weather_atm
+                # Update session state for consistency
+                st.session_state[f"{KEY_PREFIX}atm"] = default_atm
+        
+        # Find index for selectbox (only used if session state doesn't have the value)
+        lum_index = lum_options_list.index(default_lum) if default_lum in lum_options_list else 0
+        atm_index = atm_options_list.index(default_atm) if default_atm in atm_options_list else 0
+        
+        # Ensure session state is set with valid values (needed for selectbox with key)
+        if f"{KEY_PREFIX}lum" not in st.session_state or st.session_state[f"{KEY_PREFIX}lum"] not in lum_options_list:
+            st.session_state[f"{KEY_PREFIX}lum"] = default_lum
+        if f"{KEY_PREFIX}atm" not in st.session_state or st.session_state[f"{KEY_PREFIX}atm"] not in atm_options_list:
+            st.session_state[f"{KEY_PREFIX}atm"] = default_atm
+        
         lum = st.selectbox(
             "Lighting Conditions",
-            options=list(LUM_OPTIONS.keys()),
+            options=lum_options_list,
             format_func=lambda x: LUM_OPTIONS[x],
-            index=list(LUM_OPTIONS.keys()).index(DEFAULTS["lum"]) if DEFAULTS["lum"] in LUM_OPTIONS else 0,
+            index=lum_index,
             key=f"{KEY_PREFIX}lum"
         )
         atm = st.selectbox(
             "Atmospheric Conditions",
-            options=list(ATM_OPTIONS.keys()),
+            options=atm_options_list,
             format_func=lambda x: ATM_OPTIONS[x],
-            index=list(ATM_OPTIONS.keys()).index(DEFAULTS["atm"]) if DEFAULTS["atm"] in ATM_OPTIONS else 0,
+            index=atm_index,
             key=f"{KEY_PREFIX}atm"
         )
     
