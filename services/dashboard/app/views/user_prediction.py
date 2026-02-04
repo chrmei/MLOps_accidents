@@ -53,7 +53,11 @@ def render():
 
     with col_right:
         # Map display (always shown, spans over two rows)
-        st.markdown("### Map")
+        map_col1, map_col2 = st.columns([20, 1])
+        with map_col1:
+            st.markdown("### Map")
+        with map_col2:
+            st.markdown("💡", help="Click on the map to set coordinates")
         
         # Get current coordinates from session state (updated by geocoding or map click)
         current_lat = st.session_state.get(f"{KEY_PREFIX}lat", 48.8584)
@@ -81,10 +85,7 @@ def render():
             returned_objects=["last_object_clicked", "last_clicked"],
         )
 
-        # Tip message
-        st.caption("💡 Click on the map to set coordinates")
-        
-        # Show selected address and GPS coordinates below the tip
+        # Show selected address and GPS coordinates
         if address_coords and address_coords.get("address"):
             st.caption(f"📍 **Selected:** {address_coords.get('address', 'Unknown address')}")
         

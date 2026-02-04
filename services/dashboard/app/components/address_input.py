@@ -69,6 +69,8 @@ def render_address_input() -> dict | None:
                 st.session_state[SELECTED_COORDS_KEY] = {
                     "latitude": result.get("latitude"),
                     "longitude": result.get("longitude"),
+                    "commune_code": result.get("commune_code"),  # INSEE commune code
+                    "department_code": result.get("department_code"),  # Department code
                 }
                 st.rerun()
 
@@ -80,6 +82,8 @@ def render_address_input() -> dict | None:
             "address": selected_address,
             "latitude": coords["latitude"],
             "longitude": coords["longitude"],
+            "commune_code": coords.get("commune_code"),  # INSEE commune code
+            "department_code": coords.get("department_code"),  # Department code
         }
 
     return None

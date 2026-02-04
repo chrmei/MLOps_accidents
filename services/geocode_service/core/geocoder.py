@@ -18,6 +18,7 @@ from typing import List, Optional, Dict
 import requests
 
 from .config import GeocodeSettings, get_geocode_settings
+from .french_geo_api import get_french_geo_client
 
 logger = logging.getLogger(__name__)
 
@@ -31,6 +32,9 @@ class GeocodeResult:
     display_name: str
     address: dict
     raw_data: dict
+    # French INSEE codes (from reverse geocoding via geo.api.gouv.fr)
+    commune_code: Optional[str] = None  # INSEE commune code (5 digits)
+    department_code: Optional[str] = None  # Department code (2-3 digits)
 
 
 class GeocoderBase(ABC):
@@ -133,6 +137,8 @@ class NominatimGeocoder(GeocoderBase):
                 display_name=cached_result.display_name,
                 address=cached_result.address.copy(),
                 raw_data=cached_result.raw_data.copy(),
+                commune_code=cached_result.commune_code,
+                department_code=cached_result.department_code,
             )
 
         self._rate_limit_wait()
@@ -156,13 +162,31 @@ class NominatimGeocoder(GeocoderBase):
                 return None
 
             result = data[0]
+            lat = float(result["lat"])
+            lon = float(result["lon"])
+            
             geocode_result = GeocodeResult(
-                latitude=float(result["lat"]),
-                longitude=float(result["lon"]),
+                latitude=lat,
+                longitude=lon,
                 display_name=result.get("display_name", address),
                 address=result.get("address", {}),
                 raw_data=result,
             )
+
+            # Try to get INSEE codes from French Geo API (reverse geocoding)
+            try:
+                french_geo_client = get_french_geo_client()
+                french_geo_result = french_geo_client.reverse_geocode(lat, lon)
+                if french_geo_result:
+                    geocode_result.commune_code = french_geo_result.commune_code
+                    geocode_result.department_code = french_geo_result.department_code
+                    logger.debug(
+                        f"Added INSEE codes: commune={geocode_result.commune_code}, "
+                        f"department={geocode_result.department_code}"
+                    )
+            except Exception as e:
+                # Don't fail geocoding if French Geo API fails
+                logger.warning(f"Failed to get INSEE codes from French Geo API: {e}")
 
             # Cache the result (per Nominatim policy)
             self._geocode_cache[address_key] = geocode_result

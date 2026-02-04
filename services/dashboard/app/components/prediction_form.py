@@ -1,10 +1,13 @@
 """Prediction form: inputs for accident features, returns dict for API."""
 from __future__ import annotations
 
+import logging
 import streamlit as st
 from streamlit_folium import st_folium
 import folium
 from datetime import datetime, date, time
+
+logger = logging.getLogger(__name__)
 
 # Defaults aligned with src/models/test_features.json
 DEFAULTS = {
@@ -257,24 +260,128 @@ def render_prediction_form(
     if time_input_key not in st.session_state:
         st.session_state[time_input_key] = current_time
 
+    # Helper function to convert INSEE codes to integer format (handles Corsica 2A/2B)
+    def convert_department_code(code: str | None) -> int:
+        """Convert department code string to integer, handling Corsica codes."""
+        if not code:
+            return DEFAULTS["dep"]
+        # Handle Corsica codes: 2A -> 201, 2B -> 202
+        if code == "2A":
+            return 201
+        if code == "2B":
+            return 202
+        try:
+            return int(code)
+        except (ValueError, TypeError):
+            return DEFAULTS["dep"]
+    
+    def convert_commune_code(code: str | None) -> int:
+        """Convert commune code string to integer, handling Corsica codes."""
+        if not code:
+            return DEFAULTS["com"]
+        # Handle Corsica codes in commune codes (e.g., "2A123" -> 201123, "2B456" -> 202456)
+        if code.startswith("2A"):
+            return int("201" + code[2:])
+        if code.startswith("2B"):
+            return int("202" + code[2:])
+        try:
+            return int(code)
+        except (ValueError, TypeError):
+            return DEFAULTS["com"]
+
+    # Auto-populate department and commune codes from geocoding if available
+    dep_key = f"{KEY_PREFIX}dep"
+    com_key = f"{KEY_PREFIX}com"
+    
+    # Track last received INSEE codes to detect when new codes arrive
+    last_insee_codes_key = f"{KEY_PREFIX}last_insee_codes"
+    
+    # Check if we have INSEE codes from geocoding
+    if address_coords:
+        dept_code = address_coords.get("department_code")
+        commune_code = address_coords.get("commune_code")
+        geocoded_lat = address_coords.get("latitude")
+        geocoded_lon = address_coords.get("longitude")
+        
+        # Get last stored INSEE codes
+        last_insee_codes = st.session_state.get(last_insee_codes_key, {})
+        last_dept = last_insee_codes.get("department_code")
+        last_commune = last_insee_codes.get("commune_code")
+        last_lat = last_insee_codes.get("lat")
+        last_lon = last_insee_codes.get("lon")
+        
+        # Check if coordinates changed significantly (new address/location)
+        # Use a smaller threshold to catch more address changes
+        coordinates_changed = False
+        if geocoded_lat and geocoded_lon:
+            if last_lat is None or last_lon is None:
+                coordinates_changed = True
+            else:
+                # Check if coordinates changed by more than ~50 meters (roughly 0.0005 degrees)
+                lat_diff = abs(float(geocoded_lat) - float(last_lat))
+                lon_diff = abs(float(geocoded_lon) - float(last_lon))
+                coordinates_changed = lat_diff > 0.0005 or lon_diff > 0.0005
+        
+        # Check if INSEE codes are new or different from what we last stored
+        codes_changed = (
+            (dept_code and dept_code != last_dept) or
+            (commune_code and commune_code != last_commune)
+        )
+        
+        # Update INSEE codes if they are available and either:
+        # 1. Coordinates changed significantly (new location) - always update
+        # 2. INSEE codes changed - always update
+        # 3. INSEE codes are new (not previously stored) - always update
+        # 4. We have INSEE codes but coordinates changed (even slightly) - update to ensure sync
+        should_update = (
+            coordinates_changed or
+            codes_changed or
+            (dept_code and not last_dept) or
+            (commune_code and not last_commune)
+        )
+        
+        if should_update:
+            # Always update if we have new INSEE codes, regardless of current form values
+            if dept_code:
+                converted_dep = convert_department_code(dept_code)
+                st.session_state[dep_key] = converted_dep
+                logger.info(f"Auto-populated Department Code: {converted_dep} (from INSEE: {dept_code})")
+            if commune_code:
+                converted_com = convert_commune_code(commune_code)
+                st.session_state[com_key] = converted_com
+                logger.info(f"Auto-populated Commune Code: {converted_com} (from INSEE: {commune_code})")
+            
+            # Store current INSEE codes and coordinates to detect future changes
+            if geocoded_lat and geocoded_lon:
+                st.session_state[last_insee_codes_key] = {
+                    "department_code": dept_code,
+                    "commune_code": commune_code,
+                    "lat": float(geocoded_lat),
+                    "lon": float(geocoded_lon),
+                }
+
     # ========== LOCATION & DATE/TIME ==========
     c1, c2 = st.columns(2)
     with c1:
-        st.markdown("### 📍 Location & Date-Time")
+        loc_col1, loc_col2 = st.columns([20, 1])
+        with loc_col1:
+            st.markdown("### 📍 Location & Date-Time")
+        with loc_col2:
+            st.markdown("ℹ️", help="Fields are automatically populated after searching for an address or selecting a location on the map")
         dep = st.number_input(
             "Department Code",
-            value=DEFAULTS["dep"],
+            value=st.session_state.get(dep_key, DEFAULTS["dep"]),
             min_value=1,
             max_value=99,
-            key=f"{KEY_PREFIX}dep",
-            help="French department number (1-99, 2A/2B for Corsica)"
+            key=dep_key,
+            help="French department number (1-99, 201/202 for Corsica). Auto-filled from GPS coordinates for French locations."
         )
         com = st.number_input(
             "Commune Code",
-            value=DEFAULTS["com"],
+            value=st.session_state.get(com_key, DEFAULTS["com"]),
             min_value=1000,
-            key=f"{KEY_PREFIX}com",
-            help="Municipality code (5 digits)"
+            key=com_key,
+            help="Municipality code (5 digits). Auto-filled from GPS coordinates for French locations."
         )
         # Datetime selector in one cell
         dt_col1, dt_col2 = st.columns(2)
@@ -299,7 +406,11 @@ def render_prediction_form(
     
     with c2:
         # ========== ENVIRONMENTAL CONDITIONS ==========
-        st.markdown("### 🌤️ Environmental Conditions")
+        env_col1, env_col2 = st.columns([20, 1])
+        with env_col1:
+            st.markdown("### 🌤️ Environmental Conditions")
+        with env_col2:
+            st.markdown("ℹ️", help="Fields are automatically populated after searching for an address or selecting a location on the map")
         
         # Get options lists
         lum_options_list = list(LUM_OPTIONS.keys())

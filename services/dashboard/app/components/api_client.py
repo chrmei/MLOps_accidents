@@ -71,7 +71,7 @@ def geocode_address(address: str) -> dict | None:
         address: Address string to geocode
 
     Returns:
-        Dict with latitude, longitude, display_name, address or None if failed
+        Dict with latitude, longitude, display_name, address, commune_code, department_code or None if failed
     """
     resp = post("/api/v1/geocode/", json={"address": address})
     if resp is None:

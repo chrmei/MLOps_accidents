@@ -62,6 +62,8 @@ async def geocode_address(
             longitude=result.longitude,
             display_name=result.display_name,
             address=result.address,
+            commune_code=result.commune_code,
+            department_code=result.department_code,
         )
 
     except HTTPException:

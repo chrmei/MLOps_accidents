@@ -19,6 +19,12 @@ class GeocodeResponse(BaseModel):
     longitude: float = Field(..., description="Longitude coordinate")
     display_name: str = Field(..., description="Formatted display name of the location")
     address: Dict = Field(default_factory=dict, description="Structured address components")
+    commune_code: Optional[str] = Field(
+        None, description="INSEE commune code (5 digits) - French locations only"
+    )
+    department_code: Optional[str] = Field(
+        None, description="Department code (2-3 digits) - French locations only"
+    )
 
 
 class GeocodeSuggestRequest(BaseModel):
