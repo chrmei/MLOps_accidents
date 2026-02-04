@@ -276,6 +276,257 @@ def convert_actp_feature(df):
     return df
 
 
+def map_place_to_group(df):
+    """
+    Group place (position in vehicle) into categories to reduce cardinality.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Input dataframe with place column
+
+    Returns
+    -------
+    pd.DataFrame
+        Dataframe with place_group feature added
+    """
+    df = df.copy()
+    if "place" in df.columns:
+        def map_place(x):
+            if pd.isna(x):
+                return "Unknown"
+            x = int(x)
+            if x == 1:
+                return "Driver"
+            elif x == 2:
+                return "Front_Passenger"
+            elif x == 10:
+                return "Pedestrian"
+            elif 3 <= x <= 9:
+                return "Rear_Other_Passenger"
+            else:
+                return "Unknown"
+
+        df["place_group"] = df["place"].apply(map_place)
+    return df
+
+
+def map_secu1_to_group(df):
+    """
+    Group secu1 (safety equipment) into categories to reduce cardinality.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Input dataframe with secu1 column
+
+    Returns
+    -------
+    pd.DataFrame
+        Dataframe with secu_group feature added
+    """
+    df = df.copy()
+    if "secu1" in df.columns:
+        def map_secu(x):
+            if pd.isna(x):
+                return "Other_Unknown"
+            x = int(x)
+            if x in [1, 3]:
+                return "Seatbelt_Restraint"
+            elif x == 2:
+                return "Helmet"
+            elif x in [5, 6, 7]:
+                return "Protective_Gear_2W"
+            elif x == 0:
+                return "None"
+            else:
+                return "Other_Unknown"  # Covers 4, 8, 9, -1
+
+        df["secu_group"] = df["secu1"].apply(map_secu)
+    return df
+
+
+def map_catv_to_group(df):
+    """
+    Group catv (vehicle category) into categories to reduce cardinality.
+    Creates catv_group column alongside existing catv transformation.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Input dataframe with catv column
+
+    Returns
+    -------
+    pd.DataFrame
+        Dataframe with catv_group feature added
+    """
+    df = df.copy()
+    if "catv" in df.columns:
+        def map_catv(x):
+            if pd.isna(x):
+                return "Other"
+            x = int(x)
+            if x == 7:
+                return "Passenger_Car"
+            elif x in [2, 30, 31, 32, 33, 34, 35, 36]:
+                return "Powered_2_Wheeler"
+            elif x in [1, 50, 60, 80]:
+                return "Micromobility_Cycle"
+            elif x in [13, 14, 15, 16, 17, 37, 38, 39, 40]:
+                return "Heavy_Public_Trans"
+            elif x in [10, 20, 21]:
+                return "Light_Utility"
+            else:
+                return "Other"  # Covers 03 (microcar), 99, and other codes
+
+        df["catv_group"] = df["catv"].apply(map_catv)
+    return df
+
+
+def map_motor_to_group(df):
+    """
+    Group motor (motorization) into categories to reduce cardinality.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Input dataframe with motor column
+
+    Returns
+    -------
+    pd.DataFrame
+        Dataframe with motor_group feature added
+    """
+    df = df.copy()
+    if "motor" in df.columns:
+        def map_motor(x):
+            if pd.isna(x):
+                return "Other_Unknown"
+            x = int(x)
+            if x == 1:
+                return "Internal_Combustion"
+            elif x in [2, 3, 4]:
+                return "Electric_Hybrid"
+            elif x == 5:
+                return "Human_Power"
+            else:
+                return "Other_Unknown"  # Covers 0, 6, -1
+
+        df["motor_group"] = df["motor"].apply(map_motor)
+    return df
+
+
+def map_obsm_to_group(df):
+    """
+    Group obsm (mobile obstacle hit) into categories to reduce cardinality.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Input dataframe with obsm column
+
+    Returns
+    -------
+    pd.DataFrame
+        Dataframe with obsm_group feature added
+    """
+    df = df.copy()
+    if "obsm" in df.columns:
+        def map_obsm(x):
+            if pd.isna(x):
+                return "Unknown"
+            x = int(x)
+            if x == 0:
+                return "None"
+            elif x in [2, 4]:
+                return "Vehicle_Train"
+            elif x == 1:
+                return "Pedestrian"
+            elif x in [5, 6, 9]:
+                return "Animal_Other"
+            else:
+                return "Unknown"  # Covers -1
+
+        df["obsm_group"] = df["obsm"].apply(map_obsm)
+    return df
+
+
+def map_obs_to_group(df):
+    """
+    Group obs (fixed obstacle hit) into categories to reduce cardinality.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Input dataframe with obs column
+
+    Returns
+    -------
+    pd.DataFrame
+        Dataframe with obs_group feature added
+    """
+    df = df.copy()
+    if "obs" in df.columns:
+        def map_obs(x):
+            if pd.isna(x):
+                return "Other_Fixed"
+            x = int(x)
+            if x == 0:
+                return "None"
+            elif x in [2, 6, 8, 13, 17]:
+                return "High_Rigid_Object"  # Trees, poles, walls
+            elif x in [3, 4, 5]:
+                return "Barrier"
+            elif x in [10, 11, 12, 16]:
+                return "Low_Terrain"  # Curbs, ditches, run-offs
+            elif x == 1:
+                return "Parked_Vehicle"
+            else:
+                return "Other_Fixed"  # Covers 7, 9, 14, 15
+
+        df["obs_group"] = df["obs"].apply(map_obs)
+    return df
+
+
+def reduce_categorical_cardinality(df):
+    """
+    Apply feature engineering mappings to reduce cardinality of categorical features.
+    
+    Creates grouped versions of high-cardinality categorical features:
+    - place -> place_group
+    - secu1 -> secu_group
+    - catv -> catv_group (alongside existing catv transformation)
+    - motor -> motor_group
+    - obsm -> obsm_group
+    - obs -> obs_group
+    
+    These grouped features can then be label encoded, reducing the number of
+    unique categories and improving model performance.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Input dataframe with categorical columns
+
+    Returns
+    -------
+    pd.DataFrame
+        Dataframe with grouped categorical features added
+    """
+    df = df.copy()
+    logger.info("Reducing categorical cardinality by grouping similar categories...")
+    
+    df = map_place_to_group(df)
+    df = map_secu1_to_group(df)
+    df = map_catv_to_group(df)
+    df = map_motor_to_group(df)
+    df = map_obsm_to_group(df)
+    df = map_obs_to_group(df)
+    
+    return df
+
+
 def encode_categorical_features(df, categorical_cols=None, label_encoders=None):
     """
     Label encode categorical features for XGBoost.
@@ -516,6 +767,9 @@ def build_features(
     df = transform_atm_feature(df)
     df = transform_catv_feature(df)
     df = convert_actp_feature(df)
+
+    # Reduce categorical cardinality by grouping similar categories
+    df = reduce_categorical_cardinality(df)
 
     # Interaction features (optional)
     if apply_interactions:
