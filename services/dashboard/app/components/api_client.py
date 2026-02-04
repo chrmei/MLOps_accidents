@@ -81,6 +81,25 @@ def geocode_address(address: str) -> dict | None:
     return None
 
 
+def reverse_geocode_coordinates(latitude: float, longitude: float) -> dict | None:
+    """
+    Reverse geocode coordinates to get address.
+
+    Args:
+        latitude: Latitude coordinate
+        longitude: Longitude coordinate
+
+    Returns:
+        Dict with latitude, longitude, display_name, address, commune_code, department_code or None if failed
+    """
+    resp = post("/api/v1/geocode/reverse", json={"latitude": latitude, "longitude": longitude})
+    if resp is None:
+        return None
+    if resp.status_code == 200:
+        return resp.json()
+    return None
+
+
 def suggest_addresses(query: str, limit: int = 5) -> list[dict]:
     """
     Get address suggestions for autocomplete.

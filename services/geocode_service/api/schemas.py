@@ -12,6 +12,13 @@ class GeocodeRequest(BaseModel):
     address: str = Field(..., description="Address string to geocode", min_length=1)
 
 
+class ReverseGeocodeRequest(BaseModel):
+    """Request payload for reverse geocoding coordinates to address."""
+
+    latitude: float = Field(..., description="Latitude coordinate", ge=-90, le=90)
+    longitude: float = Field(..., description="Longitude coordinate", ge=-180, le=180)
+
+
 class GeocodeResponse(BaseModel):
     """Response payload for geocoding result."""
 

@@ -10,6 +10,7 @@ Nominatim Usage Policy Compliance:
 - Caching: Results are cached to reduce API calls
 """
 import logging
+import threading
 import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
@@ -95,18 +96,26 @@ class NominatimGeocoder(GeocoderBase):
         self.session.headers.update({"User-Agent": self.user_agent})
         # Cache for geocoding results (per-instance, cleared on restart)
         self._geocode_cache: Dict[str, Optional[GeocodeResult]] = {}
+        # Lock for thread-safe rate limiting
+        self._rate_limit_lock = threading.Lock()
 
     def _rate_limit_wait(self):
-        """Wait if necessary to respect rate limit."""
-        now = time.time()
-        time_since_last = now - self.last_request_time
-        min_interval = 1.0 / self.rate_limit
+        """
+        Wait if necessary to respect rate limit.
+        
+        Thread-safe: Uses a lock to ensure only one request proceeds at a time,
+        preventing concurrent requests that would violate the rate limit.
+        """
+        with self._rate_limit_lock:
+            now = time.time()
+            time_since_last = now - self.last_request_time
+            min_interval = 1.0 / self.rate_limit
 
-        if time_since_last < min_interval:
-            wait_time = min_interval - time_since_last
-            time.sleep(wait_time)
+            if time_since_last < min_interval:
+                wait_time = min_interval - time_since_last
+                time.sleep(wait_time)
 
-        self.last_request_time = time.time()
+            self.last_request_time = time.time()
 
     def geocode(self, address: str) -> Optional[GeocodeResult]:
         """
@@ -199,6 +208,94 @@ class NominatimGeocoder(GeocoderBase):
             logger.error(f"Invalid response format for '{address}': {e}")
             return None
 
+    def reverse_geocode(self, latitude: float, longitude: float) -> Optional[GeocodeResult]:
+        """
+        Reverse geocode coordinates to get address using Nominatim.
+        
+        Results are cached to reduce API calls per Nominatim Usage Policy.
+
+        Args:
+            latitude: Latitude coordinate
+            longitude: Longitude coordinate
+
+        Returns:
+            GeocodeResult with address information if found, None otherwise
+        """
+        # Check cache first (per Nominatim policy: cache results)
+        cache_key = f"{latitude:.6f},{longitude:.6f}"
+        if cache_key in self._geocode_cache:
+            logger.debug(f"Returning cached reverse geocode result for: {cache_key}")
+            cached_result = self._geocode_cache[cache_key]
+            if cached_result is None:
+                return None
+            # Return a copy to avoid modifying cached data
+            return GeocodeResult(
+                latitude=cached_result.latitude,
+                longitude=cached_result.longitude,
+                display_name=cached_result.display_name,
+                address=cached_result.address.copy(),
+                raw_data=cached_result.raw_data.copy(),
+                commune_code=cached_result.commune_code,
+                department_code=cached_result.department_code,
+            )
+
+        self._rate_limit_wait()
+
+        try:
+            url = f"{self.base_url}/reverse"
+            params = {
+                "lat": latitude,
+                "lon": longitude,
+                "format": "json",
+                "addressdetails": 1,
+            }
+
+            response = self.session.get(url, params=params, timeout=10)
+            response.raise_for_status()
+
+            data = response.json()
+            if not data or "error" in data:
+                logger.info(f"No results found for coordinates: ({latitude}, {longitude})")
+                self._geocode_cache[cache_key] = None
+                return None
+
+            lat = float(data.get("lat", latitude))
+            lon = float(data.get("lon", longitude))
+            
+            geocode_result = GeocodeResult(
+                latitude=lat,
+                longitude=lon,
+                display_name=data.get("display_name", ""),
+                address=data.get("address", {}),
+                raw_data=data,
+            )
+
+            # Try to get INSEE codes from French Geo API (reverse geocoding)
+            try:
+                french_geo_client = get_french_geo_client()
+                french_geo_result = french_geo_client.reverse_geocode(lat, lon)
+                if french_geo_result:
+                    geocode_result.commune_code = french_geo_result.commune_code
+                    geocode_result.department_code = french_geo_result.department_code
+                    logger.debug(
+                        f"Added INSEE codes: commune={geocode_result.commune_code}, "
+                        f"department={geocode_result.department_code}"
+                    )
+            except Exception as e:
+                # Don't fail reverse geocoding if French Geo API fails
+                logger.warning(f"Failed to get INSEE codes from French Geo API: {e}")
+
+            # Cache the result (per Nominatim policy)
+            self._geocode_cache[cache_key] = geocode_result
+            return geocode_result
+
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Reverse geocoding request failed for ({latitude}, {longitude}): {e}")
+            return None
+        except (KeyError, ValueError, IndexError) as e:
+            logger.error(f"Invalid response format for ({latitude}, {longitude}): {e}")
+            return None
+
     def suggest(self, query: str, limit: int = 5) -> List[GeocodeResult]:
         """
         Get address suggestions for autocomplete.
@@ -277,27 +374,55 @@ class GoogleGeocoder(GeocoderBase):
         return []
 
 
+# Singleton instances (shared across all requests for rate limiting)
+_nominatim_geocoder: Optional[NominatimGeocoder] = None
+_google_geocoder: Optional[GoogleGeocoder] = None
+_geocoder_lock = threading.Lock()  # Thread-safe singleton creation
+
+
 def get_geocoder(settings: Optional[GeocodeSettings] = None) -> GeocoderBase:
     """
     Factory function to get the configured geocoder instance.
+    
+    Returns a singleton instance to ensure rate limiting works across all requests.
+    This is critical for complying with Nominatim Usage Policy (1 request/second).
+    
+    Thread-safe: Uses a lock to prevent race conditions when creating singleton instances.
 
     Args:
         settings: Geocoding settings (uses defaults if not provided)
 
     Returns:
-        GeocoderBase instance based on GEOCODE_PROVIDER setting
+        GeocoderBase instance based on GEOCODE_PROVIDER setting (singleton)
     """
+    global _nominatim_geocoder, _google_geocoder
+    
     if settings is None:
         settings = get_geocode_settings()
 
     provider = settings.GEOCODE_PROVIDER.lower()
 
     if provider == "nominatim":
-        return NominatimGeocoder(settings)
+        if _nominatim_geocoder is None:
+            with _geocoder_lock:
+                # Double-check pattern to prevent race conditions
+                if _nominatim_geocoder is None:
+                    _nominatim_geocoder = NominatimGeocoder(settings)
+        return _nominatim_geocoder
     elif provider == "google":
-        return GoogleGeocoder(settings)
+        if _google_geocoder is None:
+            with _geocoder_lock:
+                # Double-check pattern to prevent race conditions
+                if _google_geocoder is None:
+                    _google_geocoder = GoogleGeocoder(settings)
+        return _google_geocoder
     else:
         logger.warning(
             f"Unknown geocoding provider '{provider}', defaulting to Nominatim"
         )
-        return NominatimGeocoder(settings)
+        if _nominatim_geocoder is None:
+            with _geocoder_lock:
+                # Double-check pattern to prevent race conditions
+                if _nominatim_geocoder is None:
+                    _nominatim_geocoder = NominatimGeocoder(settings)
+        return _nominatim_geocoder

@@ -11,6 +11,7 @@ from ..core.geocoder import get_geocoder
 from .schemas import (
     GeocodeRequest,
     GeocodeResponse,
+    ReverseGeocodeRequest,
     GeocodeSuggestRequest,
     GeocodeSuggestResponse,
     AddressSuggestion,
@@ -128,3 +129,60 @@ async def suggest_addresses(
         logger.error(f"Address suggestion error for '{request.query}': {e}", exc_info=True)
         # Return empty suggestions rather than error for better UX
         return GeocodeSuggestResponse(suggestions=[])
+
+
+@router.post("/reverse", response_model=GeocodeResponse)
+async def reverse_geocode_coordinates(
+    request: ReverseGeocodeRequest,
+    current_user: AuthenticatedUser,
+):
+    """
+    Reverse geocode coordinates to get address.
+
+    When using Nominatim provider:
+    - Data is provided under ODbL license
+    - Attribution must be displayed: "© OpenStreetMap contributors"
+    - Results are cached to reduce API calls
+    - Rate limited to 1 request/second
+
+    Args:
+        request: ReverseGeocodeRequest with latitude and longitude
+        current_user: Authenticated user (required for access)
+
+    Returns:
+        GeocodeResponse with address details and coordinates
+
+    Raises:
+        HTTPException: If reverse geocoding fails or location not found
+    """
+    geocoder = get_geocoder()
+
+    try:
+        result = geocoder.reverse_geocode(request.latitude, request.longitude)
+
+        if result is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Address not found for coordinates ({request.latitude}, {request.longitude})",
+            )
+
+        return GeocodeResponse(
+            latitude=result.latitude,
+            longitude=result.longitude,
+            display_name=result.display_name,
+            address=result.address,
+            commune_code=result.commune_code,
+            department_code=result.department_code,
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(
+            f"Reverse geocoding error for ({request.latitude}, {request.longitude}): {e}",
+            exc_info=True
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Reverse geocoding service error: {str(e)}",
+        )

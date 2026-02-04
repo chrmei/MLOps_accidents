@@ -6,7 +6,7 @@ from streamlit_folium import st_folium
 import folium
 from datetime import datetime
 
-from ..components.api_client import post, check_geocode_health, get_weather_conditions
+from ..components.api_client import post, check_geocode_health, get_weather_conditions, reverse_geocode_coordinates
 from ..components.prediction_form import render_prediction_form, render_current_coordinates_display, KEY_PREFIX, LUM_OPTIONS, ATM_OPTIONS
 from ..components.address_input import render_address_input
 
@@ -53,11 +53,7 @@ def render():
 
     with col_right:
         # Map display (always shown, spans over two rows)
-        map_col1, map_col2 = st.columns([20, 1])
-        with map_col1:
-            st.markdown("### Map")
-        with map_col2:
-            st.markdown("💡", help="Click on the map to set coordinates")
+        st.markdown("### Map")
         
         # Get current coordinates from session state (updated by geocoding or map click)
         current_lat = st.session_state.get(f"{KEY_PREFIX}lat", 48.8584)
@@ -67,7 +63,15 @@ def render():
         m = folium.Map(location=[current_lat, current_long], zoom_start=17)
         
         # Add draggable marker
-        marker_popup_text = address_coords.get("address", "Click map to set location") if address_coords else "Click map to set location"
+        # Check for reverse geocoded address in session state
+        marker_popup_text = "Click map to set location"
+        if address_coords:
+            marker_popup_text = address_coords.get("address") or address_coords.get("display_name", "Click map to set location")
+        elif f"{KEY_PREFIX}reverse_geocode_result" in st.session_state:
+            reverse_result = st.session_state[f"{KEY_PREFIX}reverse_geocode_result"]
+            if reverse_result:
+                marker_popup_text = reverse_result.get("address") or reverse_result.get("display_name", "Click map to set location")
+        
         marker = folium.Marker(
             [current_lat, current_long],
             tooltip="Incident Location (drag marker or click map to move)",
@@ -85,10 +89,6 @@ def render():
             returned_objects=["last_object_clicked", "last_clicked"],
         )
 
-        # Show selected address and GPS coordinates
-        if address_coords and address_coords.get("address"):
-            st.caption(f"📍 **Selected:** {address_coords.get('address', 'Unknown address')}")
-        
         # Display GPS coordinates
         current_lat = st.session_state.get(f"{KEY_PREFIX}lat", 48.8584)
         current_long = st.session_state.get(f"{KEY_PREFIX}long", 2.2945)
@@ -117,6 +117,23 @@ def render():
                         st.session_state[f"{KEY_PREFIX}lat"] = new_lat
                         st.session_state[f"{KEY_PREFIX}long"] = new_long
                         coordinates_updated = True
+                        
+                        # Perform reverse geocoding to get address
+                        if geocoding_available:
+                            with st.spinner("Finding address..."):
+                                reverse_result = reverse_geocode_coordinates(new_lat, new_long)
+                                if reverse_result:
+                                    # Update address_coords with reverse geocoded result
+                                    address_coords = {
+                                        "latitude": reverse_result.get("latitude"),
+                                        "longitude": reverse_result.get("longitude"),
+                                        "address": reverse_result.get("display_name", ""),
+                                        "display_name": reverse_result.get("display_name", ""),
+                                        "commune_code": reverse_result.get("commune_code"),
+                                        "department_code": reverse_result.get("department_code"),
+                                    }
+                                    # Store in session state for form auto-population
+                                    st.session_state[f"{KEY_PREFIX}reverse_geocode_result"] = address_coords
         
         # Check if map was clicked (not marker)
         if not coordinates_updated and map_data.get("last_clicked"):
@@ -130,6 +147,36 @@ def render():
                         st.session_state[f"{KEY_PREFIX}lat"] = new_lat
                         st.session_state[f"{KEY_PREFIX}long"] = new_long
                         coordinates_updated = True
+                        
+                        # Perform reverse geocoding to get address
+                        if geocoding_available:
+                            with st.spinner("Finding address..."):
+                                reverse_result = reverse_geocode_coordinates(new_lat, new_long)
+                                if reverse_result:
+                                    # Update address_coords with reverse geocoded result
+                                    address_coords = {
+                                        "latitude": reverse_result.get("latitude"),
+                                        "longitude": reverse_result.get("longitude"),
+                                        "address": reverse_result.get("display_name", ""),
+                                        "display_name": reverse_result.get("display_name", ""),
+                                        "commune_code": reverse_result.get("commune_code"),
+                                        "department_code": reverse_result.get("department_code"),
+                                    }
+                                    # Store in session state for form auto-population
+                                    st.session_state[f"{KEY_PREFIX}reverse_geocode_result"] = address_coords
+        
+        # Get reverse geocoded address if available from map click
+        if coordinates_updated and f"{KEY_PREFIX}reverse_geocode_result" in st.session_state:
+            reverse_result = st.session_state[f"{KEY_PREFIX}reverse_geocode_result"]
+            if reverse_result:
+                address_coords = reverse_result
+                # Store for form auto-population (don't delete yet, form needs it)
+        
+        # Show selected address (from geocoding or reverse geocoding)
+        if address_coords and address_coords.get("address"):
+            st.caption(f"📍 **Selected:** {address_coords.get('address', 'Unknown address')}")
+        elif address_coords and address_coords.get("display_name"):
+            st.caption(f"📍 **Selected:** {address_coords.get('display_name', 'Unknown address')}")
         
         # Fetch weather data when coordinates are updated (via map or geocoding)
         coordinates_changed = coordinates_updated or geocoding_updated
@@ -230,9 +277,16 @@ def render():
     st.markdown("---")
 
     # Prediction form with address coordinates (full width below)
+    # Use reverse geocoded address if available
+    form_address_coords = address_coords
+    if f"{KEY_PREFIX}reverse_geocode_result" in st.session_state:
+        reverse_result = st.session_state[f"{KEY_PREFIX}reverse_geocode_result"]
+        if reverse_result:
+            form_address_coords = reverse_result
+    
     weather_data_for_form = st.session_state.get(f"{KEY_PREFIX}weather_data")
     features = render_prediction_form(
-        address_coords=address_coords,
+        address_coords=form_address_coords,
         geocoding_available=geocoding_available,
         weather_data=weather_data_for_form,
     )
