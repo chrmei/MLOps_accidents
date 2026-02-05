@@ -1,5 +1,8 @@
 # 🚦 MLOps Road Accident Prediction
 
+[![CI Pipeline](https://github.com/DataScientest-Studio/Template_MLOps_accidents/actions/workflows/ci.yaml/badge.svg)](https://github.com/DataScientest-Studio/Template_MLOps_accidents/actions/workflows/ci.yaml)
+[![codecov](https://codecov.io/github/DataScientest-Studio/Template_MLOps_accidents/branch/master/graph/badge.svg)](https://codecov.io/github/DataScientest-Studio/Template_MLOps_accidents)
+
 A **containerized** MLOps project for predicting road accidents using machine learning. This project implements a complete MLOps workflow from data ingestion to model serving, with a focus on **reproducibility, versioning, and containerization**.
 
 ## 📋 Table of Contents
