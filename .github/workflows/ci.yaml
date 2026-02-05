@@ -1,0 +1,399 @@
+name: CI Pipeline
+
+on:
+  push:
+    branches:
+      - master
+      - 'feature/**'
+  pull_request:
+    branches:
+      - master
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  # =============================================================================
+  # Lint & Code Quality Checks
+  # =============================================================================
+  lint:
+    name: Linting & Code Quality
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ['3.10', '3.11', '3.12']
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install flake8 black isort mypy
+
+      - name: Run Black (code formatter check)
+        run: black --check --diff src tests services
+
+      - name: Run isort (import sorting check)
+        run: isort --check-only --diff src tests services
+
+      - name: Run Flake8 (linting)
+        run: flake8 src tests services --count --select=E9,F63,F7,F82 --show-source --statistics
+        continue-on-error: true
+
+      - name: Run Flake8 (full check with warnings)
+        run: flake8 src tests services --count --exit-zero --max-complexity=10 --max-line-length=100 --statistics
+
+      - name: Run MyPy (type checking)
+        run: mypy src services --ignore-missing-imports --no-error-summary
+        continue-on-error: true
+
+  # =============================================================================
+  # Unit Tests with Coverage
+  # =============================================================================
+  unit-tests:
+    name: Unit Tests & Coverage
+    runs-on: ubuntu-latest
+    needs: lint
+    strategy:
+      matrix:
+        python-version: ['3.10', '3.11', '3.12']
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_DB: test_db
+          POSTGRES_USER: testuser
+          POSTGRES_PASSWORD: testpassword
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest pytest-cov pytest-asyncio
+
+      - name: Run unit tests with coverage
+        env:
+          DATABASE_URL: postgresql://testuser:testpassword@localhost:5432/test_db
+        run: |
+          pytest tests/test_auth_service.py tests/test_data_service.py tests/test_predict_service.py tests/test_train_service.py \
+            --cov=src \
+            --cov=services \
+            --cov-report=xml \
+            --cov-report=html \
+            --cov-report=term-missing \
+            --cov-fail-under=70 \
+            -v
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v3
+        with:
+          file: ./coverage.xml
+          flags: unittests
+          name: codecov-umbrella
+          fail_ci_if_error: false
+
+      - name: Archive coverage reports
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: coverage-report-${{ matrix.python-version }}
+          path: htmlcov/
+          retention-days: 30
+
+  # =============================================================================
+  # Integration Tests for Microservices
+  # =============================================================================
+  integration-tests:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    needs: lint
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_DB: test_db
+          POSTGRES_USER: testuser
+          POSTGRES_PASSWORD: testpassword
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest pytest-asyncio
+
+      - name: Run integration tests
+        env:
+          DATABASE_URL: postgresql://testuser:testpassword@localhost:5432/test_db
+          JWT_SECRET_KEY: test-secret-key-for-ci
+          ALLOWED_HOSTS: localhost,127.0.0.1
+        run: |
+          pytest tests/services/ -v -s --tb=short
+
+  # =============================================================================
+  # Security Scanning
+  # =============================================================================
+  security-scan:
+    name: Security Scanning
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install security tools
+        run: |
+          python -m pip install --upgrade pip
+          pip install bandit safety
+
+      - name: Run Bandit (code security check)
+        run: bandit -r src services -f json -o bandit-report.json
+        continue-on-error: true
+
+      - name: Run Safety (dependency vulnerability check)
+        run: safety check --json
+        continue-on-error: true
+
+      - name: Upload Bandit report
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: bandit-security-report
+          path: bandit-report.json
+          retention-days: 30
+
+      - name: Trivy vulnerability scanner (Docker images)
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+        continue-on-error: true
+
+      - name: Upload Trivy results to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@v2
+        with:
+          sarif_file: 'trivy-results.sarif'
+        if: always()
+
+  # =============================================================================
+  # Build Docker Images
+  # =============================================================================
+  build-docker:
+    name: Build Docker Images
+    runs-on: ubuntu-latest
+    needs: [unit-tests, integration-tests, security-scan]
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+
+      - name: Log in to Container Registry
+        uses: docker/login-action@v2
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+        if: github.event_name == 'push'
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v4
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=ref,event=branch
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha,prefix={{branch}}-
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build and push main Dockerfile
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          target: dev
+          push: ${{ github.event_name == 'push' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build and test Python service image
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          file: ./services/Dockerfile.python
+          push: false
+          cache-from: type=gha
+
+      - name: Build and push Auth Service image
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          file: ./services/Dockerfile.python
+          target: auth_service
+          push: ${{ github.event_name == 'push' }}
+          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/auth-service:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build and push Data Service image
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          file: ./services/Dockerfile.python
+          target: data_service
+          push: ${{ github.event_name == 'push' }}
+          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/data-service:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build and push Predict Service image
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          file: ./services/Dockerfile.python
+          target: predict_service
+          push: ${{ github.event_name == 'push' }}
+          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/predict-service:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build and push Train Service image
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          file: ./services/Dockerfile.python
+          target: train_service
+          push: ${{ github.event_name == 'push' }}
+          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/train-service:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build and push Dashboard image
+        uses: docker/build-push-action@v4
+        with:
+          context: ./services/dashboard
+          push: ${{ github.event_name == 'push' }}
+          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/dashboard:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+        if: hashFiles('services/dashboard/Dockerfile') != ''
+        continue-on-error: true
+
+  # =============================================================================
+  # PR Merge Gate - Ensure all checks pass
+  # =============================================================================
+  pr-gate:
+    name: PR Merge Gate
+    runs-on: ubuntu-latest
+    needs: [lint, unit-tests, integration-tests, security-scan, build-docker]
+    if: always()
+    steps:
+      - name: Check all jobs passed
+        run: |
+          if [[ "${{ needs.lint.result }}" != "success" ]]; then
+            echo "Linting job failed"
+            exit 1
+          fi
+          if [[ "${{ needs.unit-tests.result }}" != "success" ]]; then
+            echo "Unit tests job failed"
+            exit 1
+          fi
+          if [[ "${{ needs.integration-tests.result }}" != "success" ]]; then
+            echo "Integration tests job failed"
+            exit 1
+          fi
+          if [[ "${{ needs.security-scan.result }}" != "success" ]]; then
+            echo "Security scan job failed"
+            exit 1
+          fi
+          if [[ "${{ needs.build-docker.result }}" != "success" ]]; then
+            echo "Docker build job failed"
+            exit 1
+          fi
+          echo "All checks passed! ✅"
+
+  # =============================================================================
+  # Summary Report
+  # =============================================================================
+  summary:
+    name: CI Summary
+    runs-on: ubuntu-latest
+    needs: [lint, unit-tests, integration-tests, security-scan, build-docker, pr-gate]
+    if: always()
+    steps:
+      - name: Generate summary
+        run: |
+          echo "## CI Pipeline Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Check | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|-------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Linting | ${{ needs.lint.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Unit Tests | ${{ needs.unit-tests.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Integration Tests | ${{ needs.integration-tests.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Security Scan | ${{ needs.security-scan.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Docker Build | ${{ needs.build-docker.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| PR Gate | ${{ needs.pr-gate.result }} |" >> $GITHUB_STEP_SUMMARY
+
+      - name: Fail if critical checks failed
+        if: |
+          needs.lint.result != 'success' ||
+          needs.unit-tests.result != 'success' ||
+          needs.integration-tests.result != 'success' ||
+          needs.security-scan.result != 'success' ||
+          needs.build-docker.result != 'success' ||
+          needs.pr-gate.result != 'success'
+        run: exit 1
