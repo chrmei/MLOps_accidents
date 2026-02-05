@@ -3,6 +3,7 @@ import streamlit as st
 
 from app.utils.session import ensure_authenticated
 from app.components.sidebar import PAGE_KEY, render_sidebar
+from app.components.header import render_header
 from app.views.login import render_login
 from app.views.forgot_password import render as render_forgot_password
 from app.views.user_prediction import render as render_prediction
@@ -38,6 +39,7 @@ if not ensure_authenticated():
         render_login()
 else:
     render_sidebar()
+    render_header()
     page = st.session_state.get(PAGE_KEY, "prediction")
     user = st.session_state.get(USER_KEY, {})
     role = user.get("role", "")
