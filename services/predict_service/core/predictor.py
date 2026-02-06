@@ -55,6 +55,7 @@ def _preprocess_and_predict_one(
         apply_cyclic_encoding=apply_cyclic_encoding,
         apply_interactions=apply_interactions,
         model_type=model_type_display,
+        metadata=metadata,
     )
     expected_features = get_expected_features(model, metadata)
     if expected_features is None:

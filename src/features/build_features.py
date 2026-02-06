@@ -19,6 +19,8 @@ import numpy as np
 import pandas as pd
 from sklearn.preprocessing import LabelEncoder
 
+from .schema import get_canonical_input_defaults
+
 logger = logging.getLogger(__name__)
 
 
@@ -666,20 +668,9 @@ def prepare_input_for_feature_engineering(
     """
     df = pd.DataFrame([features])
     
-    # Standard default values for interim dataset columns
+    # Standard default values for interim dataset columns (from canonical schema)
     if default_values is None:
-        default_values = {
-            "locp": 0,
-            "actp": 0,
-            "etatp": 0,
-            "obs": 0,
-            "v1": 0,
-            "vosp": 0,
-            "prof": 0,
-            "plan": 0,
-            "larrout": 0.0,
-            "infra": 0,
-        }
+        default_values = get_canonical_input_defaults()
     
     # Convert year_acc to an if needed (an is used for datetime creation)
     if "year_acc" in df.columns and "an" not in df.columns:

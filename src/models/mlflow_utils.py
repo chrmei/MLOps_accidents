@@ -16,6 +16,7 @@ matplotlib.use('Agg')  # Use non-interactive backend
 import matplotlib.pyplot as plt
 import mlflow
 import mlflow.sklearn
+from mlflow.models import infer_signature
 import numpy as np
 import pandas as pd
 import seaborn as sns
@@ -201,6 +202,7 @@ def log_model_to_mlflow(
     X_test: pd.DataFrame,
     y_test: pd.Series,
     use_grid_search: bool = False,
+    X_train_interim: Optional[pd.DataFrame] = None,
 ):
     """
     Log experiment to MLflow with model-specific tags.
@@ -291,8 +293,39 @@ def log_model_to_mlflow(
             logger.info("Logging model to MLflow...")
             registered_model_name = trainer.get_registered_model_name()
             
+            # Prepare input example and signature for MLflow
+            input_example = None
+            signature = None
+            
+            # Get canonical input example from interim dataset if available
+            if X_train_interim is not None and len(X_train_interim) > 0:
+                # Use first row of interim dataset as canonical input example
+                input_example = X_train_interim.iloc[[0]]
+                logger.info("Using interim dataset for MLflow input example")
+            else:
+                # Fallback: try to create from feature names (less ideal)
+                logger.warning(
+                    "Interim dataset not provided. Cannot create canonical input example. "
+                    "Model will be logged without signature."
+                )
+            
+            # Create signature if we have input example
+            if input_example is not None:
+                try:
+                    # Get predictions for signature inference
+                    y_pred_sample = model.predict(X_test.iloc[:1])
+                    signature = infer_signature(input_example, y_pred_sample)
+                    logger.info("MLflow signature inferred successfully")
+                except Exception as e:
+                    logger.warning(f"Failed to infer MLflow signature: {e}")
+            
+            # Log model with signature and input example
             model_info = mlflow.sklearn.log_model(
-                model, name="model", registered_model_name=registered_model_name
+                model,
+                name="model",
+                registered_model_name=registered_model_name,
+                signature=signature,
+                input_example=input_example,
             )
             
             # Get the version that was just created
@@ -407,11 +440,53 @@ def log_model_to_mlflow(
                     if hasattr(estimator, "feature_names_in_") and estimator.feature_names_in_ is not None:
                         feature_names = list(estimator.feature_names_in_)
                 
+                # Detect if grouped features are used
+                grouped_features = ["place_group", "secu_group", "catv_group", "motor_group", "obsm_group", "obs_group"]
+                uses_grouped_features = any(feat in feature_names for feat in grouped_features)
+                
+                # Build grouped feature mappings if grouped features are used
+                grouped_feature_mappings = {}
+                removed_features = []
+                if uses_grouped_features:
+                    mapping_pairs = [
+                        ("place", "place_group"),
+                        ("secu1", "secu_group"),
+                        ("catv", "catv_group"),
+                        ("motor", "motor_group"),
+                        ("obsm", "obsm_group"),
+                        ("obs", "obs_group"),
+                    ]
+                    for source, grouped in mapping_pairs:
+                        if grouped in feature_names:
+                            grouped_feature_mappings[source] = grouped
+                            # If source feature is not in final features, it was removed
+                            if source not in feature_names:
+                                removed_features.append(source)
+                
+                # Get canonical input features
+                input_features = None
+                if X_train_interim is not None and len(X_train_interim) > 0:
+                    input_features = list(X_train_interim.columns)
+                else:
+                    # Fallback: infer from canonical schema
+                    from src.features.schema import get_canonical_input_features
+                    input_features = get_canonical_input_features()
+                
+                # Determine feature engineering version
+                feature_engineering_version = "v1.0-legacy"
+                if uses_grouped_features:
+                    feature_engineering_version = "v2.0-grouped-features"
+                
                 metadata = {
-                    "feature_names": feature_names,
+                    "feature_names": feature_names,  # Final features after preprocessing
+                    "input_features": input_features,  # Canonical input features
                     "apply_cyclic_encoding": trainer.apply_cyclic_encoding,
                     "apply_interactions": trainer.apply_interactions,
                     "model_type": trainer.model_type,
+                    "feature_engineering_version": feature_engineering_version,
+                    "uses_grouped_features": uses_grouped_features,
+                    "grouped_feature_mappings": grouped_feature_mappings,
+                    "removed_features": removed_features,
                 }
                 
                 # Save metadata temporarily and log as artifact

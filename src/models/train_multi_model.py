@@ -198,6 +198,54 @@ def train_single_model(
             y_pred = model.predict(X_test)
             metrics["y_pred"] = y_pred.tolist()
             
+            # Load interim dataset for canonical input example (if available)
+            X_train_interim = None
+            try:
+                paths_config = config.get("paths", {})
+                # Infer interim path from features path
+                features_path = paths_config.get("features", "data/preprocessed/features.csv")
+                features_dir = os.path.dirname(features_path)
+                interim_path = os.path.join(features_dir, "interim_dataset.csv")
+                
+                # Fallback to default if inferred path doesn't exist
+                if not os.path.exists(interim_path):
+                    interim_path = paths_config.get("interim", "data/preprocessed/interim_dataset.csv")
+                
+                if os.path.exists(interim_path):
+                    logger.info(f"Loading interim dataset from {interim_path} for MLflow signature")
+                    df_interim_full = pd.read_csv(interim_path)
+                    
+                    # Remove target column if present
+                    if "grav" in df_interim_full.columns:
+                        df_interim_full = df_interim_full.drop(columns=["grav"])
+                    
+                    # Split interim dataset the same way as feature-engineered data
+                    # We need to use the same indices as the original split
+                    from sklearn.model_selection import train_test_split
+                    data_split = config.get("data_split", {})
+                    test_size = data_split.get("test_size", 0.3)
+                    random_state = data_split.get("random_state", 42)
+                    shuffle = data_split.get("shuffle", True)
+                    
+                    # Create a dummy target for splitting (we just need the same indices)
+                    dummy_y = pd.Series([0] * len(df_interim_full))
+                    X_interim_train, _, _, _ = train_test_split(
+                        df_interim_full,
+                        dummy_y,
+                        test_size=test_size,
+                        random_state=random_state,
+                        shuffle=shuffle,
+                    )
+                    X_train_interim = X_interim_train
+                    logger.info(f"Interim dataset loaded and split: {X_train_interim.shape}")
+                else:
+                    logger.warning(
+                        f"Interim dataset not found at {interim_path}. "
+                        "MLflow signature will not include canonical input example."
+                    )
+            except Exception as e:
+                logger.warning(f"Failed to load interim dataset for MLflow signature: {e}")
+            
             log_model_to_mlflow(
                 config=config,
                 trainer=trainer,
@@ -210,6 +258,7 @@ def train_single_model(
                 X_test=X_test,
                 y_test=y_test,
                 use_grid_search=use_grid_search,
+                X_train_interim=X_train_interim,
             )
             
             # End the MLflow run

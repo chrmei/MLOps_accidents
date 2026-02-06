@@ -29,9 +29,15 @@ async def lifespan(app: FastAPI):
     from src.models.predict_model import load_best_production_model
 
     try:
-        model, label_encoders, metadata, model_type = load_best_production_model(
+        result = load_best_production_model(
             config_path=MODEL_CONFIG_PATH,
         )
+        # Handle both old (4-tuple) and new (5-tuple) return formats
+        if len(result) == 5:
+            model, label_encoders, metadata, model_type, model_uri = result
+        else:
+            model, label_encoders, metadata, model_type = result
+            model_uri = None
     except Exception as e:
         logger.exception("Failed to load best Production model from MLflow at startup")
         raise RuntimeError(
@@ -44,6 +50,7 @@ async def lifespan(app: FastAPI):
         "label_encoders": label_encoders,
         "metadata": metadata,
         "model_type": model_type,
+        "model_uri": model_uri,
     }
     logger.info("Loaded best Production model from MLflow (model_type=%s)", model_type)
     yield
