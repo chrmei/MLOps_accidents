@@ -14,7 +14,9 @@ from typing import Any, Callable, List, Optional, Tuple
 from services.common.job_store import job_store
 
 
-def _install_log_capture(log_lines: List[str], log_prefixes: Tuple[str, ...]) -> logging.Handler:
+def _install_log_capture(
+    log_lines: List[str], log_prefixes: Tuple[str, ...]
+) -> logging.Handler:
     """Install a root-logger handler that appends formatted records to log_lines (filtered by prefix)."""
     formatter = logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 

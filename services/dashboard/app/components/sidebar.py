@@ -1,4 +1,5 @@
 """Sidebar navigation and logout."""
+
 import streamlit as st
 
 from ..auth import USER_KEY, is_admin
@@ -15,7 +16,9 @@ def render_sidebar():
     role = user.get("role", "")
     st.sidebar.markdown(f"**{user.get('username', '')}** ({role})")
     st.sidebar.markdown("---")
-    if st.sidebar.button("Control Center (Prediction)", key="nav_pred", use_container_width=True):
+    if st.sidebar.button(
+        "Control Center (Prediction)", key="nav_pred", use_container_width=True
+    ):
         st.session_state[PAGE_KEY] = "prediction"
         st.rerun()
     if is_admin(role):
@@ -30,7 +33,9 @@ def render_sidebar():
             "https://dagshub.com/chrmei/MLOps_accidents.mlflow/#/experiments/0/runs?searchFilter=&orderByKey=metrics.%60f1_score%60&orderByAsc=false&startTime=ALL&lifecycleFilter=Active&modelVersionFilter=All+Runs&datasetsFilter=W10%3D",
             use_container_width=True,
         )
-        if st.sidebar.button("User Management", key="nav_users", use_container_width=True):
+        if st.sidebar.button(
+            "User Management", key="nav_users", use_container_width=True
+        ):
             st.session_state[PAGE_KEY] = "user_mgmt"
             st.rerun()
     st.sidebar.markdown("---")

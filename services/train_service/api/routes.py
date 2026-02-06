@@ -7,16 +7,20 @@ import json
 import logging
 import os
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, HTTPException, Query, status
 
 from services.common.config import Settings
 from services.common.dependencies import AdminUser, SettingsDep
 from services.common.job_runner import run_sync_with_streaming_logs
 from services.common.job_store import JobStatus as StoreJobStatus
 from services.common.job_store import JobType, job_store
-from services.common.models import JobResponse, JobsListResponse, JobStatus as ApiJobStatus
+from services.common.models import (
+    JobResponse,
+    JobsListResponse,
+)
+from services.common.models import JobStatus as ApiJobStatus
 
 from ..core.config_io import ensure_config_exists, load_config, save_config
 from ..core.trainer import run_training
@@ -130,7 +134,9 @@ async def start_training(
 async def get_job_status(job_id: str, current_user: AdminUser):
     job = await job_store.get_job(job_id)
     if not job:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Job not found"
+        )
     return _job_to_response(job)
 
 
@@ -140,8 +146,12 @@ _JOB_PAGE_SIZES = (10, 20, 50, 100)
 @router.get("/jobs", response_model=JobsListResponse)
 async def list_jobs(
     current_user: AdminUser,
-    job_type: Optional[str] = Query(None, description="Filter by job type (comma-separated for multiple)"),
-    status_filter: Optional[ApiJobStatus] = Query(None, alias="status", description="Filter by job status"),
+    job_type: Optional[str] = Query(
+        None, description="Filter by job type (comma-separated for multiple)"
+    ),
+    status_filter: Optional[ApiJobStatus] = Query(
+        None, alias="status", description="Filter by job status"
+    ),
     limit: int = Query(10, ge=1, le=100, description="Page size (10, 20, 50, or 100)"),
     offset: int = Query(0, ge=0, description="Number of jobs to skip"),
 ):
@@ -176,7 +186,9 @@ async def list_jobs(
 
 
 @router.get("/metrics/{model_type}")
-async def get_model_metrics(model_type: str, current_user: AdminUser, settings: SettingsDep):
+async def get_model_metrics(
+    model_type: str, current_user: AdminUser, settings: SettingsDep
+):
     """Return saved metrics for a given model type."""
     metrics_dir = os.path.join(settings.DATA_DIR, "metrics")
     metrics_path = os.path.join(metrics_dir, f"{model_type}_metrics.json")
@@ -202,7 +214,9 @@ async def get_model_metrics(model_type: str, current_user: AdminUser, settings: 
 async def get_config(
     current_user: AdminUser,
     settings: SettingsDep,
-    path: Optional[str] = Query(None, description="Override config file path (default: MODEL_CONFIG_PATH)"),
+    path: Optional[str] = Query(
+        None, description="Override config file path (default: MODEL_CONFIG_PATH)"
+    ),
 ):
     """Return current training config as JSON (admin-only)."""
     if path is None:

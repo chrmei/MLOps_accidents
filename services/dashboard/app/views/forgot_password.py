@@ -1,4 +1,5 @@
 """Forgot password: request reset token, then set new password (masked)."""
+
 import streamlit as st
 
 from ..auth import forgot_password, reset_password
@@ -7,7 +8,9 @@ from ..auth import forgot_password, reset_password
 def render():
     """Two-step flow: request reset by username, then reset with token + new password."""
     st.title("Reset password")
-    st.markdown("Request a password reset, then set a new password using the token you receive.")
+    st.markdown(
+        "Request a password reset, then set a new password using the token you receive."
+    )
 
     step = st.session_state.get("forgot_password_step", "request")
 
@@ -23,15 +26,23 @@ def render():
                 if not ok:
                     st.error(result)
                 else:
-                    reset_token = result.get("reset_token") if isinstance(result, dict) else None
-                    st.warning("Email delivery is not yet implemented. Reset links are not sent by email.")
+                    reset_token = (
+                        result.get("reset_token") if isinstance(result, dict) else None
+                    )
+                    st.warning(
+                        "Email delivery is not yet implemented. Reset links are not sent by email."
+                    )
                     if reset_token:
                         st.session_state["forgot_reset_token"] = reset_token
                         st.session_state["forgot_password_step"] = "reset"
-                        st.success("Reset token generated (dev mode). Enter it below with your new password.")
+                        st.success(
+                            "Reset token generated (dev mode). Enter it below with your new password."
+                        )
                         st.rerun()
                     else:
-                        st.info("If an account exists, a reset link would be sent. Enable dev mode (DEV_PASSWORD_RESET_TOKEN_IN_RESPONSE) to receive the token here instead.")
+                        st.info(
+                            "If an account exists, a reset link would be sent. Enable dev mode (DEV_PASSWORD_RESET_TOKEN_IN_RESPONSE) to receive the token here instead."
+                        )
 
         st.markdown("---")
         if st.button("Back to login", key="forgot_back"):
@@ -44,9 +55,15 @@ def render():
     # step == "reset"
     token_prefill = st.session_state.get("forgot_reset_token", "")
     with st.form("reset_password_form"):
-        token = st.text_input("Reset token", value=token_prefill, type="password", key="reset_token_input")
-        new_password = st.text_input("New password", type="password", key="reset_new_password")
-        confirm = st.text_input("Confirm new password", type="password", key="reset_confirm_password")
+        token = st.text_input(
+            "Reset token", value=token_prefill, type="password", key="reset_token_input"
+        )
+        new_password = st.text_input(
+            "New password", type="password", key="reset_new_password"
+        )
+        confirm = st.text_input(
+            "Confirm new password", type="password", key="reset_confirm_password"
+        )
         submitted = st.form_submit_button("Set new password")
     if submitted:
         if not token:

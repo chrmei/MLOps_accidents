@@ -159,4 +159,3 @@ def get_settings() -> Settings:
 
 # Global settings instance
 settings = get_settings()
-

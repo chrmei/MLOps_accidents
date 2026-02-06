@@ -30,7 +30,11 @@ def _deep_merge_components(target: Dict[str, Any], source: Dict[str, Any]) -> No
         if key not in target:
             target[key] = value
             continue
-        if key == "schemas" and isinstance(value, dict) and isinstance(target[key], dict):
+        if (
+            key == "schemas"
+            and isinstance(value, dict)
+            and isinstance(target[key], dict)
+        ):
             for schema_name, schema_def in value.items():
                 if schema_name not in target[key]:
                     target[key][schema_name] = schema_def
@@ -39,7 +43,9 @@ def _deep_merge_components(target: Dict[str, Any], source: Dict[str, Any]) -> No
         # else: keep target (first wins)
 
 
-def _merge_tags(existing: List[Dict[str, Any]], new_tags: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+def _merge_tags(
+    existing: List[Dict[str, Any]], new_tags: List[Dict[str, Any]]
+) -> List[Dict[str, Any]]:
     """Merge tag lists; deduplicate by name, keep first."""
     seen: set[str] = {t.get("name") for t in existing if t.get("name")}
     for t in new_tags or []:
@@ -50,7 +56,9 @@ def _merge_tags(existing: List[Dict[str, Any]], new_tags: List[Dict[str, Any]]) 
     return existing
 
 
-async def fetch_spec(client: httpx.AsyncClient, name: str, url: str) -> Dict[str, Any] | None:
+async def fetch_spec(
+    client: httpx.AsyncClient, name: str, url: str
+) -> Dict[str, Any] | None:
     """Fetch OpenAPI spec from a single service."""
     try:
         r = await client.get(url, timeout=10.0)
@@ -61,7 +69,9 @@ async def fetch_spec(client: httpx.AsyncClient, name: str, url: str) -> Dict[str
         return None
 
 
-def merge_openapi_specs(specs: List[Dict[str, Any]], server_url: str = "/") -> Dict[str, Any]:
+def merge_openapi_specs(
+    specs: List[Dict[str, Any]], server_url: str = "/"
+) -> Dict[str, Any]:
     """
     Merge multiple OpenAPI 3.x specs into one.
     - Paths: combined (no path overlap across services).
@@ -121,7 +131,13 @@ async def fetch_and_merge(
                     logger.info("Fetched OpenAPI from %s", name)
                     break
                 if attempt < retries:
-                    logger.info("Retry %s/%s for %s in %ss", attempt, retries, name, retry_delay_s)
+                    logger.info(
+                        "Retry %s/%s for %s in %ss",
+                        attempt,
+                        retries,
+                        name,
+                        retry_delay_s,
+                    )
                     await asyncio.sleep(retry_delay_s)
             else:
                 raise RuntimeError(

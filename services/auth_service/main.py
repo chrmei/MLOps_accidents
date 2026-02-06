@@ -2,12 +2,11 @@
 Authentication service FastAPI application.
 """
 
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import JSONResponse
-
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
 
 from services.common.config import settings
 from services.common.models import HealthResponse

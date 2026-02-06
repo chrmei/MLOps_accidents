@@ -18,7 +18,9 @@ class TrainRequest(BaseModel):
         default=None,
         description="Override grid search flag. If omitted, uses config value.",
     )
-    compare: bool = Field(default=True, description="Generate comparison report and best model selection.")
+    compare: bool = Field(
+        default=True, description="Generate comparison report and best model selection."
+    )
     config_path: Optional[str] = Field(
         default=None,
         description="Path to training configuration file. Defaults to MODEL_CONFIG_PATH from settings when omitted.",

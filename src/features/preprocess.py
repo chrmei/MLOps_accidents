@@ -5,6 +5,7 @@ Preprocessing utilities for model inference.
 This module provides reusable preprocessing functions for inference,
 ensuring consistency with the training pipeline.
 """
+
 import logging
 from typing import Dict, Optional
 
@@ -24,10 +25,10 @@ def preprocess_for_inference(
 ) -> pd.DataFrame:
     """
     Preprocess input features for model inference.
-    
+
     This is the main preprocessing function that should be used for inference.
     It applies the same feature engineering pipeline used during training.
-    
+
     Parameters
     ----------
     features : dict
@@ -40,7 +41,7 @@ def preprocess_for_inference(
         Whether to create interaction features (must match training)
     model_type : str, optional
         Model type (e.g., "XGBoost", "LightGBM", "RandomForest") for logging purposes.
-        
+
     Returns
     -------
     pd.DataFrame
@@ -48,7 +49,7 @@ def preprocess_for_inference(
     """
     # Prepare input for feature engineering
     df_interim = prepare_input_for_feature_engineering(features)
-    
+
     # Apply feature engineering pipeline
     df_features, _ = build_features(
         df_interim,
@@ -57,7 +58,7 @@ def preprocess_for_inference(
         label_encoders=label_encoders,
         model_type=model_type,
     )
-    
+
     return df_features
 
 
@@ -66,7 +67,7 @@ def align_features_with_model(
 ) -> pd.DataFrame:
     """
     Align feature DataFrame with model's expected feature order and names.
-    
+
     Parameters
     ----------
     df_features : pd.DataFrame
@@ -75,7 +76,7 @@ def align_features_with_model(
         List of feature names expected by the model
     fill_value : float
         Value to use for missing features
-        
+
     Returns
     -------
     pd.DataFrame
@@ -88,15 +89,14 @@ def align_features_with_model(
         )
         for feat in missing_features:
             df_features[feat] = fill_value
-    
+
     extra_features = set(df_features.columns) - set(expected_features)
     if extra_features:
         logger.warning(
             f"Extra features ({len(extra_features)}) will be dropped: {list(extra_features)[:10]}..."
         )
-    
+
     # Reorder and select only expected features
     df_features = df_features.reindex(columns=expected_features, fill_value=fill_value)
-    
-    return df_features
 
+    return df_features

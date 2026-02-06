@@ -1,6 +1,8 @@
 """Admin ML Ops: trigger training, view and edit config."""
-import streamlit as st
+
 import json
+
+import streamlit as st
 
 from ..components.api_client import get, post, put
 
@@ -28,7 +30,11 @@ def render():
     if resp and resp.status_code == 200:
         config = resp.json()
         with st.expander("View / Edit config"):
-            edited = st.text_area("YAML-like config (JSON)", value=json.dumps(config, indent=2), height=200)
+            edited = st.text_area(
+                "YAML-like config (JSON)",
+                value=json.dumps(config, indent=2),
+                height=200,
+            )
             if st.button("Save config"):
                 try:
                     body = json.loads(edited)
@@ -91,7 +97,9 @@ def render():
             items = data.get("items") or []
             total = data.get("total", 0)
             if not items:
-                st.info("No training jobs yet. Use **Start Training** above to run one.")
+                st.info(
+                    "No training jobs yet. Use **Start Training** above to run one."
+                )
             else:
                 for j in items:
                     msg = j.get("message") or ""
@@ -112,7 +120,9 @@ def render():
                         if result:
                             st.json(result)
                 num_pages = max(1, (total + page_size - 1) // page_size)
-                st.caption(f"Showing {offset + 1}–{min(offset + len(items), total)} of {total} jobs (newest first)")
+                st.caption(
+                    f"Showing {offset + 1}–{min(offset + len(items), total)} of {total} jobs (newest first)"
+                )
                 prev_col, _, next_col = st.columns([1, 2, 1])
                 with prev_col:
                     if page > 0 and st.button("← Previous", key="ml_ops_prev"):

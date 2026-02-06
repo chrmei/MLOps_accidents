@@ -62,7 +62,9 @@ class Job:
             "status": self.status.value,
             "created_at": self.created_at.isoformat(),
             "started_at": self.started_at.isoformat() if self.started_at else None,
-            "completed_at": self.completed_at.isoformat() if self.completed_at else None,
+            "completed_at": (
+                self.completed_at.isoformat() if self.completed_at else None
+            ),
             "progress": self.progress,
             "message": self.message,
             "result": self.result,
@@ -175,7 +177,11 @@ class JobStore:
                 job.status = status
                 if status == JobStatus.RUNNING and job.started_at is None:
                     job.started_at = datetime.utcnow()
-                elif status in (JobStatus.COMPLETED, JobStatus.FAILED, JobStatus.CANCELLED):
+                elif status in (
+                    JobStatus.COMPLETED,
+                    JobStatus.FAILED,
+                    JobStatus.CANCELLED,
+                ):
                     job.completed_at = datetime.utcnow()
 
             if progress is not None:
@@ -343,4 +349,3 @@ def _get_job_store() -> JobStore:
 
 
 job_store = _get_job_store()
-

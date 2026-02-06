@@ -8,11 +8,11 @@ This module contains trainer classes for different model types:
 - LogisticRegressionTrainer
 - LightGBMTrainer
 """
+
 import logging
 import time
 from typing import Dict, Optional, Tuple
 
-import numpy as np
 import pandas as pd
 from imblearn.over_sampling import SMOTE
 from imblearn.pipeline import Pipeline as ImbPipeline
@@ -28,6 +28,7 @@ logger = logging.getLogger(__name__)
 # Try to import optional dependencies
 try:
     import xgboost as xgb
+
     XGBOOST_AVAILABLE = True
 except ImportError:
     XGBOOST_AVAILABLE = False
@@ -35,6 +36,7 @@ except ImportError:
 
 try:
     import lightgbm as lgb
+
     LIGHTGBM_AVAILABLE = True
 except ImportError:
     LIGHTGBM_AVAILABLE = False
@@ -43,7 +45,7 @@ except ImportError:
 
 class XGBoostTrainer(BaseTrainer):
     """Trainer for XGBoost models."""
-    
+
     model_type = "xgboost"
 
     def _get_default_params(self) -> Dict:
@@ -81,7 +83,12 @@ class XGBoostTrainer(BaseTrainer):
         if use_grid_search:
             # For grid search, create base model without parameters
             pipeline_steps.append(
-                ("xgb", xgb.XGBClassifier(random_state=random_state, eval_metric=eval_metric))
+                (
+                    "xgb",
+                    xgb.XGBClassifier(
+                        random_state=random_state, eval_metric=eval_metric
+                    ),
+                )
             )
             pipeline = ImbPipeline(pipeline_steps)
 
@@ -94,7 +101,12 @@ class XGBoostTrainer(BaseTrainer):
             verbose = grid_config.get("verbose", 1)
 
             grid_search = GridSearchCV(
-                pipeline, param_grid, cv=cv, scoring=scoring, n_jobs=n_jobs, verbose=verbose
+                pipeline,
+                param_grid,
+                cv=cv,
+                scoring=scoring,
+                n_jobs=n_jobs,
+                verbose=verbose,
             )
 
             logger.info(f"Starting grid search with {cv}-fold CV...")
@@ -116,7 +128,12 @@ class XGBoostTrainer(BaseTrainer):
                 "best_model_fit_time": best_model_fit_time,
             }
 
-            return best_model, grid_search.best_params_, grid_search.best_score_, training_times
+            return (
+                best_model,
+                grid_search.best_params_,
+                grid_search.best_score_,
+                training_times,
+            )
         else:
             # Use default parameters
             default_params = self._get_default_params()
@@ -124,7 +141,9 @@ class XGBoostTrainer(BaseTrainer):
                 (
                     "xgb",
                     xgb.XGBClassifier(
-                        random_state=random_state, eval_metric=eval_metric, **default_params
+                        random_state=random_state,
+                        eval_metric=eval_metric,
+                        **default_params,
                     ),
                 )
             )
@@ -152,7 +171,9 @@ class XGBoostTrainer(BaseTrainer):
         xgb_model = model
         if hasattr(model, "steps"):
             for step_name, step_model in model.steps:
-                if "xgb" in step_name.lower() or isinstance(step_model, xgb.XGBClassifier):
+                if "xgb" in step_name.lower() or isinstance(
+                    step_model, xgb.XGBClassifier
+                ):
                     xgb_model = step_model
                     break
 
@@ -165,7 +186,7 @@ class XGBoostTrainer(BaseTrainer):
 
 class RandomForestTrainer(BaseTrainer):
     """Trainer for Random Forest models."""
-    
+
     model_type = "random_forest"
 
     def _get_default_params(self) -> Dict:
@@ -210,12 +231,21 @@ class RandomForestTrainer(BaseTrainer):
             # Fix None values: convert string 'None' or YAML null to Python None
             if "rf__max_depth" in param_grid:
                 param_grid["rf__max_depth"] = [
-                    None if (v is None or v == "None" or str(v).lower() == "none") else v
+                    (
+                        None
+                        if (v is None or v == "None" or str(v).lower() == "none")
+                        else v
+                    )
                     for v in param_grid["rf__max_depth"]
                 ]
 
             grid_search = GridSearchCV(
-                pipeline, param_grid, cv=cv, scoring=scoring, n_jobs=n_jobs, verbose=verbose
+                pipeline,
+                param_grid,
+                cv=cv,
+                scoring=scoring,
+                n_jobs=n_jobs,
+                verbose=verbose,
             )
 
             logger.info(f"Starting grid search with {cv}-fold CV...")
@@ -237,16 +267,19 @@ class RandomForestTrainer(BaseTrainer):
                 "best_model_fit_time": best_model_fit_time,
             }
 
-            return best_model, grid_search.best_params_, grid_search.best_score_, training_times
+            return (
+                best_model,
+                grid_search.best_params_,
+                grid_search.best_score_,
+                training_times,
+            )
         else:
             # Use default parameters
             default_params = self._get_default_params()
             pipeline_steps.append(
                 (
                     "rf",
-                    RandomForestClassifier(
-                        random_state=random_state, **default_params
-                    ),
+                    RandomForestClassifier(random_state=random_state, **default_params),
                 )
             )
             pipeline = ImbPipeline(pipeline_steps)
@@ -272,7 +305,9 @@ class RandomForestTrainer(BaseTrainer):
         rf_model = model
         if hasattr(model, "steps"):
             for step_name, step_model in model.steps:
-                if "rf" in step_name.lower() or isinstance(step_model, RandomForestClassifier):
+                if "rf" in step_name.lower() or isinstance(
+                    step_model, RandomForestClassifier
+                ):
                     rf_model = step_model
                     break
 
@@ -285,14 +320,16 @@ class RandomForestTrainer(BaseTrainer):
 
 class LogisticRegressionTrainer(BaseTrainer):
     """Trainer for Logistic Regression models."""
-    
+
     model_type = "logistic_regression"
 
     def _get_default_params(self) -> Dict:
         """Get default Logistic Regression parameters from config."""
         lr_config = self.config.get("logistic_regression", {}).get("default_params", {})
         # Remove random_state and max_iter as they're handled separately
-        params = {k: v for k, v in lr_config.items() if k not in ["random_state", "max_iter"]}
+        params = {
+            k: v for k, v in lr_config.items() if k not in ["random_state", "max_iter"]
+        }
         return params
 
     def _build_model(
@@ -333,14 +370,17 @@ class LogisticRegressionTrainer(BaseTrainer):
             # Create conditional parameter grid to avoid incompatible solver/penalty combinations
             # lbfgs only supports l2 penalty, liblinear supports both l1 and l2
             from sklearn.model_selection import ParameterGrid
-            
+
             solvers = param_grid_raw.get("lr__solver", ["lbfgs"])
             penalties = param_grid_raw.get("lr__penalty", ["l2"])
-            
+
             # Build base parameter dict (excluding solver and penalty)
-            base_params = {k: v for k, v in param_grid_raw.items() 
-                          if k not in ["lr__solver", "lr__penalty"]}
-            
+            base_params = {
+                k: v
+                for k, v in param_grid_raw.items()
+                if k not in ["lr__solver", "lr__penalty"]
+            }
+
             # Generate all valid solver/penalty combinations
             valid_solver_penalty = []
             for solver in solvers:
@@ -349,7 +389,7 @@ class LogisticRegressionTrainer(BaseTrainer):
                     if solver == "lbfgs" and penalty == "l1":
                         continue
                     valid_solver_penalty.append((solver, penalty))
-            
+
             # Build parameter grid: expand base params and add valid solver/penalty combos
             if base_params:
                 # Expand base parameter grid
@@ -369,7 +409,12 @@ class LogisticRegressionTrainer(BaseTrainer):
                 ]
 
             grid_search = GridSearchCV(
-                pipeline, param_grid, cv=cv, scoring=scoring, n_jobs=n_jobs, verbose=verbose
+                pipeline,
+                param_grid,
+                cv=cv,
+                scoring=scoring,
+                n_jobs=n_jobs,
+                verbose=verbose,
             )
 
             logger.info(f"Starting grid search with {cv}-fold CV...")
@@ -391,7 +436,12 @@ class LogisticRegressionTrainer(BaseTrainer):
                 "best_model_fit_time": best_model_fit_time,
             }
 
-            return best_model, grid_search.best_params_, grid_search.best_score_, training_times
+            return (
+                best_model,
+                grid_search.best_params_,
+                grid_search.best_score_,
+                training_times,
+            )
         else:
             # Use default parameters
             default_params = self._get_default_params()
@@ -426,7 +476,9 @@ class LogisticRegressionTrainer(BaseTrainer):
         lr_model = model
         if hasattr(model, "steps"):
             for step_name, step_model in model.steps:
-                if "lr" in step_name.lower() or isinstance(step_model, LogisticRegression):
+                if "lr" in step_name.lower() or isinstance(
+                    step_model, LogisticRegression
+                ):
                     lr_model = step_model
                     break
 
@@ -439,7 +491,7 @@ class LogisticRegressionTrainer(BaseTrainer):
 
 class LightGBMTrainer(BaseTrainer):
     """Trainer for LightGBM models."""
-    
+
     model_type = "lightgbm"
 
     def _get_default_params(self) -> Dict:
@@ -454,7 +506,9 @@ class LightGBMTrainer(BaseTrainer):
     ) -> Tuple[object, Dict, Optional[float], Dict]:
         """Build and train LightGBM model."""
         if not LIGHTGBM_AVAILABLE:
-            raise ImportError("LightGBM is required. Install with: pip install lightgbm")
+            raise ImportError(
+                "LightGBM is required. Install with: pip install lightgbm"
+            )
 
         lgbm_config = self.config.get("lightgbm", {}).get("default_params", {})
         random_state = lgbm_config.get("random_state", 42)
@@ -485,7 +539,12 @@ class LightGBMTrainer(BaseTrainer):
             verbose = grid_config.get("verbose", 1)
 
             grid_search = GridSearchCV(
-                pipeline, param_grid, cv=cv, scoring=scoring, n_jobs=n_jobs, verbose=verbose
+                pipeline,
+                param_grid,
+                cv=cv,
+                scoring=scoring,
+                n_jobs=n_jobs,
+                verbose=verbose,
             )
 
             logger.info(f"Starting grid search with {cv}-fold CV...")
@@ -507,7 +566,12 @@ class LightGBMTrainer(BaseTrainer):
                 "best_model_fit_time": best_model_fit_time,
             }
 
-            return best_model, grid_search.best_params_, grid_search.best_score_, training_times
+            return (
+                best_model,
+                grid_search.best_params_,
+                grid_search.best_score_,
+                training_times,
+            )
         else:
             # Use default parameters
             default_params = self._get_default_params()
@@ -542,7 +606,9 @@ class LightGBMTrainer(BaseTrainer):
         lgbm_model = model
         if hasattr(model, "steps"):
             for step_name, step_model in model.steps:
-                if "lgbm" in step_name.lower() or isinstance(step_model, lgb.LGBMClassifier):
+                if "lgbm" in step_name.lower() or isinstance(
+                    step_model, lgb.LGBMClassifier
+                ):
                     lgbm_model = step_model
                     break
 
@@ -551,4 +617,3 @@ class LightGBMTrainer(BaseTrainer):
             params = lgbm_model.get_params()
 
         return params
-

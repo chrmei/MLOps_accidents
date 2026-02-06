@@ -9,11 +9,10 @@ This module provides:
 """
 
 import os
-from typing import AsyncGenerator, Generator
+from typing import AsyncGenerator
 
 import pytest
-from httpx import AsyncClient, ASGITransport
-from pydantic import BaseModel
+from httpx import AsyncClient
 
 # =============================================================================
 # Configuration
@@ -22,21 +21,13 @@ from pydantic import BaseModel
 
 def pytest_configure(config):
     """Configure pytest with custom markers."""
-    config.addinivalue_line(
-        "markers", "auth: marks tests related to authentication"
-    )
-    config.addinivalue_line(
-        "markers", "data: marks tests related to data service"
-    )
-    config.addinivalue_line(
-        "markers", "train: marks tests related to train service"
-    )
+    config.addinivalue_line("markers", "auth: marks tests related to authentication")
+    config.addinivalue_line("markers", "data: marks tests related to data service")
+    config.addinivalue_line("markers", "train: marks tests related to train service")
     config.addinivalue_line(
         "markers", "predict: marks tests related to predict service"
     )
-    config.addinivalue_line(
-        "markers", "integration: marks integration tests"
-    )
+    config.addinivalue_line("markers", "integration: marks integration tests")
 
 
 # =============================================================================
@@ -94,6 +85,7 @@ def get_base_url(service: str = None) -> str:
         if base_url.startswith("http"):
             # Extract hostname from URL
             from urllib.parse import urlparse
+
             parsed = urlparse(base_url)
             host = parsed.hostname or "localhost"
             return f"http://{host}:{port}/api/v1/{service}"
@@ -167,26 +159,26 @@ def predict_health_url() -> str:
 def get_health_url(service: str) -> str:
     """
     Get health check URL for a service.
-    
+
     When using nginx (BASE_URL is set), health endpoints are at /api/v1/{service}/health.
     When accessing services directly, health endpoints are at the root /health.
-    
+
     Args:
         service: Service name ('auth', 'data', 'train', 'predict')
-    
+
     Returns:
         Health check URL string
     """
     # Check if we're using nginx (BASE_URL is set to something other than localhost)
     base_url_env = os.getenv("BASE_URL") or os.getenv("TARGET_IP", "")
-    
+
     if base_url_env and "localhost" not in base_url_env:
         # Using nginx - health endpoints are proxied at /api/v1/{service}/health
         base = base_url_env.rstrip("/")
         if not base.startswith("http"):
             base = f"http://{base}"
         return f"{base}/api/v1/{service}/health"
-    
+
     # Direct service access - health endpoint is at root /health
     base_url = get_base_url(service)
     if f"/api/v1/{service}" in base_url:
@@ -217,9 +209,15 @@ async def http_client() -> AsyncGenerator[AsyncClient, None]:
 @pytest.fixture
 def admin_credentials() -> dict:
     """Admin credentials for testing (from env: ADMIN_USERNAME, ADMIN_PASSWORD)."""
+    username = os.getenv("ADMIN_USERNAME", "admin")
+    password = os.getenv("ADMIN_PASSWORD", "admin")
+    if len(username) < 3:
+        username = "admin"
+    if len(password) < 8:
+        password = "admin"
     return {
-        "username": os.getenv("ADMIN_USERNAME", ""),
-        "password": os.getenv("ADMIN_PASSWORD", ""),
+        "username": username,
+        "password": password,
     }
 
 
@@ -254,36 +252,38 @@ async def admin_token(
         AssertionError: If login fails
     """
     import asyncio
-    
+
     # Retry logic for service startup
     max_retries = 5
     retry_delay = 2.0
     last_response = None
-    
+
     for attempt in range(max_retries):
         response = await http_client.post(
             f"{auth_base_url}/login",
             json=admin_credentials,
         )
         last_response = response
-        
+
         if response.status_code == 200:
             data = response.json()
             assert "access_token" in data
             return data["access_token"]
-        
+
         # If 503, 502 (service unavailable) or 429 (rate limit), wait and retry
         if response.status_code in (502, 503, 429) and attempt < max_retries - 1:
             await asyncio.sleep(retry_delay)
             continue
-        
+
         # For other errors (401, etc.), fail immediately
         if response.status_code != 200:
             break
-    
+
     # If we get here, login failed
     assert last_response is not None, "No response received"
-    assert last_response.status_code == 200, f"Login failed after {max_retries} attempts: {last_response.status_code} - {last_response.text}"
+    assert (
+        last_response.status_code == 200
+    ), f"Login failed after {max_retries} attempts: {last_response.status_code} - {last_response.text}"
 
 
 @pytest.fixture
@@ -311,7 +311,7 @@ async def user_token(
         AssertionError: If user creation or login fails
     """
     import asyncio
-    
+
     # Try to create user (may fail if user exists, which is OK)
     headers = {"Authorization": f"Bearer {admin_token}"}
     user_data = {
@@ -320,7 +320,7 @@ async def user_token(
         "full_name": "Test User",
         "role": "user",
     }
-    
+
     # Retry user creation in case of transient errors
     user_created = False
     created_user_id = None
@@ -346,7 +346,7 @@ async def user_token(
         if create_response.status_code >= 500 and attempt < 2:
             await asyncio.sleep(1.0)
             continue
-    
+
     if not user_created:
         raise AssertionError(
             f"Failed to create user after 3 attempts. Last response: {create_response.status_code} - {create_response.text}"
@@ -356,17 +356,19 @@ async def user_token(
     max_retries = 5
     retry_delay = 2.0
     last_response = None
-    
+
     for attempt in range(max_retries):
         response = await http_client.post(
             f"{auth_base_url}/login",
             json=regular_user_credentials,
         )
         last_response = response
-        
+
         if response.status_code == 200:
             data = response.json()
-            assert "access_token" in data, f"Login response missing access_token: {data}"
+            assert (
+                "access_token" in data
+            ), f"Login response missing access_token: {data}"
             token = data["access_token"]
             # Verify token is not empty
             assert token, "Access token is empty"
@@ -380,21 +382,21 @@ async def user_token(
                         headers=headers,
                     )
             return
-        
+
         # If 401, user might not exist yet - wait and retry (user creation might be async)
         if response.status_code == 401 and attempt < max_retries - 1:
             await asyncio.sleep(retry_delay)
             continue
-        
+
         # If 502/503 (service unavailable), wait and retry
         if response.status_code in (502, 503) and attempt < max_retries - 1:
             await asyncio.sleep(retry_delay)
             continue
-        
+
         # For other errors (400, 422, etc.), fail immediately
         if response.status_code != 200:
             break
-    
+
     # If we get here, login failed
     assert last_response is not None, "No response received"
     error_msg = (
@@ -426,6 +428,7 @@ def user_headers(user_token: str) -> dict:
 def get_test_raw_dir() -> str:
     """Directory for test raw data (used by data service preprocessing tests)."""
     from pathlib import Path
+
     return os.getenv("TEST_RAW_DIR") or str(
         Path(__file__).resolve().parent.parent / "data" / "test" / "raw"
     )
@@ -439,11 +442,13 @@ def ensure_test_raw_data() -> None:
     raw_dir = get_test_raw_dir()
     try:
         from src.data.make_dataset import discover_raw_file_paths
+
         discover_raw_file_paths(raw_dir)
         return  # all four files already present
     except FileNotFoundError:
         pass  # at least one file missing, run import
     from src.data.import_raw_data import import_raw_data
+
     import_raw_data(
         raw_data_relative_path=raw_dir,
         filenames=[

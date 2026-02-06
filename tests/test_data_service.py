@@ -22,9 +22,7 @@ class TestDataService:
     # =========================================================================
 
     @pytest.mark.asyncio
-    async def test_health_check(
-        self, http_client: AsyncClient, data_health_url: str
-    ):
+    async def test_health_check(self, http_client: AsyncClient, data_health_url: str):
         """Test health check endpoint."""
         response = await http_client.get(data_health_url)
         assert response.status_code == 200

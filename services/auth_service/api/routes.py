@@ -226,7 +226,9 @@ async def forgot_password(request: ForgotPasswordRequest):
             message="If an account exists, a reset link has been sent.",
             reset_token=token,
         )
-    return ForgotPasswordResponse(message="If an account exists, a reset link has been sent.")
+    return ForgotPasswordResponse(
+        message="If an account exists, a reset link has been sent."
+    )
 
 
 @router.post("/reset-password", status_code=status.HTTP_204_NO_CONTENT)

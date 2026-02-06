@@ -1,4 +1,5 @@
 """Admin Data Ops: trigger pipelines, view job logs."""
+
 import streamlit as st
 
 from ..components.api_client import get, post
@@ -16,7 +17,9 @@ def render():
                 st.error("Not authenticated.")
             elif resp.status_code == 202:
                 job = resp.json()
-                st.session_state["data_ops_job_started"] = f"Job started: {job.get('job_id', '')}"
+                st.session_state["data_ops_job_started"] = (
+                    f"Job started: {job.get('job_id', '')}"
+                )
             else:
                 try:
                     st.error(resp.json().get("detail", "Failed"))
@@ -29,7 +32,9 @@ def render():
                 st.error("Not authenticated.")
             elif resp.status_code == 202:
                 job = resp.json()
-                st.session_state["data_ops_job_started"] = f"Job started: {job.get('job_id', '')}"
+                st.session_state["data_ops_job_started"] = (
+                    f"Job started: {job.get('job_id', '')}"
+                )
             else:
                 try:
                     st.error(resp.json().get("detail", "Failed"))
@@ -121,14 +126,18 @@ def render():
                             st.json(result)
                 # Pagination nav
                 num_pages = max(1, (total + page_size - 1) // page_size)
-                st.caption(f"Showing {offset + 1}–{min(offset + len(items), total)} of {total} jobs (newest first)")
+                st.caption(
+                    f"Showing {offset + 1}–{min(offset + len(items), total)} of {total} jobs (newest first)"
+                )
                 prev_col, _, next_col = st.columns([1, 2, 1])
                 with prev_col:
                     if page > 0 and st.button("← Previous", key="data_ops_prev"):
                         st.session_state["data_ops_page"] = page - 1
                         st.rerun()
                 with next_col:
-                    if page < num_pages - 1 and st.button("Next →", key="data_ops_next"):
+                    if page < num_pages - 1 and st.button(
+                        "Next →", key="data_ops_next"
+                    ):
                         st.session_state["data_ops_page"] = page + 1
                         st.rerun()
 

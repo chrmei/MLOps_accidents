@@ -263,9 +263,11 @@ def _db_get_user(username: str) -> Optional[UserInDB]:
     from services.common.database import UserModel, get_session
 
     with get_session() as session:
-        row = session.execute(
-            select(UserModel).where(UserModel.username == username)
-        ).scalars().one_or_none()
+        row = (
+            session.execute(select(UserModel).where(UserModel.username == username))
+            .scalars()
+            .one_or_none()
+        )
         return _db_row_to_user_in_db(row) if row else None
 
 
@@ -282,9 +284,11 @@ def _db_create_user(
     from services.common.database import UserModel, get_session
 
     with get_session() as session:
-        existing = session.execute(
-            select(UserModel).where(UserModel.username == username)
-        ).scalars().one_or_none()
+        existing = (
+            session.execute(select(UserModel).where(UserModel.username == username))
+            .scalars()
+            .one_or_none()
+        )
         if existing:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -307,7 +311,11 @@ def _db_ensure_admin() -> None:
     """Ensure default admin user exists in Postgres."""
     from sqlalchemy.dialects.postgresql import insert as pg_insert
 
-    from services.common.database import UserModel, create_tables_if_postgres, get_session
+    from services.common.database import (
+        UserModel,
+        create_tables_if_postgres,
+        get_session,
+    )
 
     create_tables_if_postgres()
     with get_session() as session:
@@ -470,7 +478,7 @@ async def get_current_user(
             created_at=user.created_at,
             updated_at=user.updated_at,
         )
-    
+
     # User doesn't exist locally (created in auth service, not synced here)
     # Create User from token data - token is already validated, so we trust it
     return User(
@@ -623,17 +631,15 @@ def _db_get_user_by_id(user_id: int) -> Optional[UserInDB]:
 
 def _db_update_user_password(username: str, new_hashed_password: str) -> bool:
     """Update user password in Postgres by username. Returns True if updated."""
-    from sqlalchemy import select, update
+    from sqlalchemy import update
 
     from services.common.database import UserModel, get_session
 
     with get_session() as session:
-        result = (
-            session.execute(
-                update(UserModel)
-                .where(UserModel.username == username)
-                .values(hashed_password=new_hashed_password)
-            )
+        result = session.execute(
+            update(UserModel)
+            .where(UserModel.username == username)
+            .values(hashed_password=new_hashed_password)
         )
         return result.rowcount > 0
 
@@ -796,4 +802,3 @@ def update_user_password(username: str, new_password: str) -> bool:
         return False
     _fake_users_db[username].hashed_password = hashed
     return True
-

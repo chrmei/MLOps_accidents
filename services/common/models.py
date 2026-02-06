@@ -13,7 +13,6 @@ from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, EmailStr, Field, field_validator
 
-
 # =============================================================================
 # Enums
 # =============================================================================
@@ -321,4 +320,3 @@ class BatchPredictionResponse(BaseModel):
     model_version: str
     count: int
     timestamp: datetime = Field(default_factory=datetime.utcnow)
-

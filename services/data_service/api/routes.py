@@ -5,16 +5,20 @@ FastAPI routes for the data service.
 import asyncio
 import logging
 import os
-from typing import List, Optional
+from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, HTTPException, Query, status
 
 from services.common.config import Settings
 from services.common.dependencies import AdminUser, SettingsDep
 from services.common.job_runner import run_sync_with_streaming_logs
 from services.common.job_store import JobStatus as StoreJobStatus
 from services.common.job_store import JobType, job_store
-from services.common.models import JobResponse, JobsListResponse, JobStatus as ApiJobStatus
+from services.common.models import (
+    JobResponse,
+    JobsListResponse,
+)
+from services.common.models import JobStatus as ApiJobStatus
 
 from ..core.features import build_feature_dataset
 from ..core.preprocessing import preprocess_data
@@ -49,7 +53,9 @@ def _job_to_response(job) -> JobResponse:
 _DATA_LOG_PREFIXES = ("src.", "services.data_service.")
 
 
-async def _run_preprocess_job(job_id: str, request: PreprocessRequest, settings: Settings):
+async def _run_preprocess_job(
+    job_id: str, request: PreprocessRequest, settings: Settings
+):
     raw_dir = request.raw_dir or settings.RAW_DATA_DIR
     preprocessed_dir = request.preprocessed_dir or settings.PREPROCESSED_DATA_DIR
 
@@ -87,9 +93,13 @@ async def _run_preprocess_job(job_id: str, request: PreprocessRequest, settings:
         )
 
 
-async def _run_feature_job(job_id: str, request: BuildFeaturesRequest, settings: Settings):
+async def _run_feature_job(
+    job_id: str, request: BuildFeaturesRequest, settings: Settings
+):
     preprocessed_dir = request.preprocessed_dir or settings.PREPROCESSED_DATA_DIR
-    interim_path = request.interim_path or os.path.join(preprocessed_dir, "interim_dataset.csv")
+    interim_path = request.interim_path or os.path.join(
+        preprocessed_dir, "interim_dataset.csv"
+    )
     models_dir = request.models_dir or settings.MODELS_DIR
 
     await job_store.update_job(
@@ -134,7 +144,9 @@ async def _run_feature_job(job_id: str, request: BuildFeaturesRequest, settings:
 # -----------------------------------------------------------------------------
 
 
-@router.post("/preprocess", response_model=JobResponse, status_code=status.HTTP_202_ACCEPTED)
+@router.post(
+    "/preprocess", response_model=JobResponse, status_code=status.HTTP_202_ACCEPTED
+)
 async def start_preprocess(
     request: PreprocessRequest,
     current_user: AdminUser,
@@ -151,7 +163,9 @@ async def start_preprocess(
     return _job_to_response(job)
 
 
-@router.post("/build-features", response_model=JobResponse, status_code=status.HTTP_202_ACCEPTED)
+@router.post(
+    "/build-features", response_model=JobResponse, status_code=status.HTTP_202_ACCEPTED
+)
 async def start_feature_engineering(
     request: BuildFeaturesRequest,
     current_user: AdminUser,
@@ -172,7 +186,9 @@ async def start_feature_engineering(
 async def get_job_status(job_id: str, current_user: AdminUser):
     job = await job_store.get_job(job_id)
     if not job:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Job not found"
+        )
     return _job_to_response(job)
 
 
@@ -182,8 +198,12 @@ _JOB_PAGE_SIZES = (10, 20, 50, 100)
 @router.get("/jobs", response_model=JobsListResponse)
 async def list_jobs(
     current_user: AdminUser,
-    job_type: Optional[str] = Query(None, description="Filter by job type (comma-separated for multiple)"),
-    status_filter: Optional[ApiJobStatus] = Query(None, alias="status", description="Filter by job status"),
+    job_type: Optional[str] = Query(
+        None, description="Filter by job type (comma-separated for multiple)"
+    ),
+    status_filter: Optional[ApiJobStatus] = Query(
+        None, alias="status", description="Filter by job status"
+    ),
     limit: int = Query(10, ge=1, le=100, description="Page size (10, 20, 50, or 100)"),
     offset: int = Query(0, ge=0, description="Number of jobs to skip"),
 ):
