@@ -1,4 +1,4 @@
-.PHONY: help install install-dev sync lock update clean lint format type-check test test-cov test-api test-api-cov test-api-service test-api-service-cov test-api-auth test-api-data test-api-train test-api-predict run-import run-preprocess run-features run-train run-train-grid run-predict run-predict-file workflow-all workflow-data workflow-ml dvc-init dvc-setup-remote dvc-status dvc-push dvc-pull dvc-repro docker-up docker-down docker-build-services docker-logs docker-status docker-health docker-restart docker-dev docker-build docker-build-dev docker-build-train docker-dvc-pull docker-clean docker-test docker-test-build docker-test-run docker-test-cov docker-test-service k3s-create-secrets k3s-build-images k3s-build-test-image k3s-import-images k3s-import-test-image k3s-deploy k3s-deploy-predict-only k3s-destroy k3s-status k3s-scale-predict k3s-restart k3s-reload-model k3s-logs-predict k3s-logs k3s-get-node-ip k3s-test k3s-test-run k3s-test-cov k3s-test-service k3s-test-logs k3s-test-clean
+.PHONY: help install install-dev sync lock update clean lint format type-check test test-cov test-api test-api-cov test-api-service test-api-service-cov test-api-auth test-api-data test-api-train test-api-predict run-import run-preprocess run-features run-train run-train-grid run-predict run-predict-file workflow-all workflow-data workflow-ml dvc-init dvc-setup-remote dvc-status dvc-push dvc-pull dvc-repro docker-up docker-down docker-build-services docker-logs docker-status docker-health docker-restart docker-dev docker-build docker-build-dev docker-build-train docker-dvc-pull docker-clean docker-test docker-test-build docker-test-run docker-test-cov docker-test-service k3s-create-secrets k3s-build-images k3s-build-test-image k3s-import-images k3s-import-test-image k3s-deploy k3s-deploy-predict-only k3s-destroy k3s-shutdown k3s-status k3s-scale-predict k3s-restart k3s-reload-model k3s-logs-predict k3s-logs k3s-get-node-ip k3s-test k3s-test-run k3s-test-cov k3s-test-service k3s-test-logs k3s-test-clean
 
 # Load .env file if it exists (cross-platform with GNU Make)
 # Note: On Windows, use Git Bash, WSL, or another Unix-like environment
@@ -518,6 +518,17 @@ k3s-destroy: ## Delete all k3s resources (namespace deletion removes everything)
 	@echo "Destroying k3s deployment..."
 	@kubectl delete namespace $(K3S_NAMESPACE) || echo "Namespace already deleted or doesn't exist"
 	@echo "k3s deployment destroyed!"
+
+k3s-shutdown: ## Safely shut down workloads without losing data (keeps namespace, PVCs, secrets)
+	@echo "Shutting down k3s workloads (data preserved)..."
+	@kubectl delete deployment --all -n $(K3S_NAMESPACE) --ignore-not-found=true
+	@kubectl delete job --all -n $(K3S_NAMESPACE) --ignore-not-found=true
+	@kubectl delete cronjob --all -n $(K3S_NAMESPACE) --ignore-not-found=true
+	@kubectl delete service --all -n $(K3S_NAMESPACE) --ignore-not-found=true
+	@kubectl delete configmap --all -n $(K3S_NAMESPACE) --ignore-not-found=true
+	@kubectl delete hpa --all -n $(K3S_NAMESPACE) --ignore-not-found=true
+	@echo "✅ Workloads stopped. Namespace, PVCs (data), and secrets are unchanged."
+	@echo "   Restart with: make k3s-deploy"
 
 k3s-status: ## Show status of all pods, services, and PVCs
 	@echo "=== Pods ==="
