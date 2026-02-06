@@ -45,6 +45,9 @@ email-validator>=2.1.0,<3.0.0
 httpx>=0.26.0,<1.0.0
 requests>=2.31.0,<3.0.0  # For geocoding service (Nominatim API)
 
+# Weather service dependencies
+timezonefinder>=6.2.0,<7.0.0  # For timezone lookup from coordinates
+
 # Additional utilities
 python-dotenv>=1.0.0,<2.0.0
 

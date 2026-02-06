@@ -4,6 +4,7 @@ import streamlit as st
 
 from ..auth import USER_KEY, is_admin
 from ..utils.session import clear_session
+from ..config import BROWSER_BASE_URL
 
 PAGE_KEY = "dashboard_page"
 
@@ -38,6 +39,19 @@ def render_sidebar():
         ):
             st.session_state[PAGE_KEY] = "user_mgmt"
             st.rerun()
+        
+        # Documentation menu item (Admin only) - using expander for dropdown effect
+        st.sidebar.markdown("---")
+        
+        # Use BROWSER_BASE_URL for browser-accessible links (defaults to localhost)
+        # This is separate from API_BASE_URL which uses internal Docker service names
+        
+        # Documentation dropdown using expander
+        with st.sidebar.expander("Documentation", expanded=False):
+            st.link_button("Docs", f"{BROWSER_BASE_URL}/docs", use_container_width=True)
+            st.link_button("OpenAPI", f"{BROWSER_BASE_URL}/openapi.json", use_container_width=True)
+            st.link_button("redoc", f"{BROWSER_BASE_URL}/redoc", use_container_width=True)
+    
     st.sidebar.markdown("---")
     if st.sidebar.button("Logout", type="secondary"):
         clear_session()

@@ -12,6 +12,13 @@ class GeocodeRequest(BaseModel):
     address: str = Field(..., description="Address string to geocode", min_length=1)
 
 
+class ReverseGeocodeRequest(BaseModel):
+    """Request payload for reverse geocoding coordinates to address."""
+
+    latitude: float = Field(..., description="Latitude coordinate", ge=-90, le=90)
+    longitude: float = Field(..., description="Longitude coordinate", ge=-180, le=180)
+
+
 class GeocodeResponse(BaseModel):
     """Response payload for geocoding result."""
 
@@ -19,6 +26,12 @@ class GeocodeResponse(BaseModel):
     longitude: float = Field(..., description="Longitude coordinate")
     display_name: str = Field(..., description="Formatted display name of the location")
     address: Dict = Field(default_factory=dict, description="Structured address components")
+    commune_code: Optional[str] = Field(
+        None, description="INSEE commune code (5 digits) - French locations only"
+    )
+    department_code: Optional[str] = Field(
+        None, description="Department code (2-3 digits) - French locations only"
+    )
 
 
 class GeocodeSuggestRequest(BaseModel):

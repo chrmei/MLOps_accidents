@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import logging
+from datetime import datetime
+
 import streamlit as st
 import httpx
 import streamlit as st
@@ -71,9 +73,28 @@ def geocode_address(address: str) -> dict | None:
         address: Address string to geocode
 
     Returns:
-        Dict with latitude, longitude, display_name, address or None if failed
+        Dict with latitude, longitude, display_name, address, commune_code, department_code or None if failed
     """
     resp = post("/api/v1/geocode/", json={"address": address})
+    if resp is None:
+        return None
+    if resp.status_code == 200:
+        return resp.json()
+    return None
+
+
+def reverse_geocode_coordinates(latitude: float, longitude: float) -> dict | None:
+    """
+    Reverse geocode coordinates to get address.
+
+    Args:
+        latitude: Latitude coordinate
+        longitude: Longitude coordinate
+
+    Returns:
+        Dict with latitude, longitude, display_name, address, commune_code, department_code or None if failed
+    """
+    resp = post("/api/v1/geocode/reverse", json={"latitude": latitude, "longitude": longitude})
     if resp is None:
         return None
     if resp.status_code == 200:
@@ -144,3 +165,37 @@ def check_geocode_health() -> bool:
             exc_info=True
         )
         return False
+
+
+def get_weather_conditions(
+    latitude: float,
+    longitude: float,
+    datetime_obj: datetime,
+    agg_: int = 2
+) -> dict | None:
+    """
+    Get weather conditions from weather service API.
+
+    Args:
+        latitude: Latitude coordinate
+        longitude: Longitude coordinate
+        datetime_obj: Datetime for weather conditions
+        agg_: Urban area indicator (1=outside urban, 2=inside urban)
+
+    Returns:
+        Dict with weather conditions (lum, atm, weather_data, solar_data, etc.) or None if failed
+    """
+    resp = post(
+        "/api/v1/weather/conditions",
+        json={
+            "latitude": latitude,
+            "longitude": longitude,
+            "datetime": datetime_obj.isoformat(),
+            "agg_": agg_,
+        }
+    )
+    if resp is None:
+        return None
+    if resp.status_code == 200:
+        return resp.json()
+    return None

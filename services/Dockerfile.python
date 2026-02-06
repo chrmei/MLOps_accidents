@@ -2,7 +2,7 @@
 # Multi-stage Dockerfile for all Python microservices
 # =============================================================================
 # Build with: docker build -f services/Dockerfile.python --target <stage> .
-# Stages: base | auth_service | data_service | train_service | predict_service | geocode_service | docs_service | test_service
+# Stages: base | auth_service | data_service | train_service | predict_service | geocode_service | weather_service | docs_service | test_service
 # Base is shared; only one pip install of external deps. Service stages add code
 # and run fast editable install. Use DOCKER_BUILDKIT=1 for cache mounts.
 # =============================================================================
@@ -111,6 +111,21 @@ EXPOSE 8005
 HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
     CMD curl -f http://localhost:8005/health || exit 1
 CMD ["uvicorn", "services.geocode_service.main:app", "--host", "0.0.0.0", "--port", "8005"]
+
+# -----------------------------------------------------------------------------
+# Weather Service - Weather and solar data for lighting/atmospheric conditions
+# -----------------------------------------------------------------------------
+FROM base AS weather_service
+COPY pyproject.toml setup.py README.md ./
+COPY src /app/src
+COPY services/common /app/services/common
+COPY services/weather_service /app/services/weather_service
+RUN pip install -e . && chown -R mlops:mlops /app
+USER mlops
+EXPOSE 8006
+HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
+    CMD curl -f http://localhost:8006/health || exit 1
+CMD ["uvicorn", "services.weather_service.main:app", "--host", "0.0.0.0", "--port", "8006"]
 
 # -----------------------------------------------------------------------------
 # Docs Service - OpenAPI aggregator (merged /docs and /openapi.json)
