@@ -150,6 +150,81 @@ The production stage is commented out in the Dockerfile. To enable:
 
 > **Note**: The prod stage will be updated to run FastAPI when the API is implemented (Phase 1).
 
+## ☸️ k3s Deployment (Production)
+
+The project includes Kubernetes manifests for deploying to k3s (lightweight Kubernetes) with horizontal scaling support.
+
+### ⚠️ Security Note
+
+**Never commit secrets to git!** The following files are gitignored:
+- `.env` (contains actual secrets)
+- `deploy/k3s/02-secret.yaml` (if created manually, not recommended)
+
+The recommended approach is to use `make k3s-create-secrets` which reads from `.env` (gitignored) and creates secrets directly in Kubernetes without storing them in files.
+
+See `.env.example` for required secret variables.
+
+### Quick Start
+
+**Prerequisites:**
+- k3s installed (`curl -sfL https://get.k3s.io | sh`)
+- kubectl configured
+- `.env` file with secrets (copy from `.env.example`)
+
+**Deploy:**
+
+```bash
+# 1. Build and import images
+make k3s-build-images
+make k3s-import-images
+
+# 2. Create secrets from .env (reads from gitignored .env file)
+make k3s-create-secrets
+
+# 3. Deploy all services
+make k3s-deploy
+
+# 4. Check status
+make k3s-status
+
+# 5. Access API at http://<node-ip>:30080
+make k3s-get-node-ip
+```
+
+### Key Features
+
+- **Multi-replica predict service** (2+ replicas) with load balancing
+- **Shared model cache** via PVC for faster startup
+- **Model reload workflow**: Job + rolling restart
+- **Optional HPA** for automatic scaling (CPU-based)
+- **All microservices** deployed and managed
+
+### Model Reload Workflow
+
+After training a new model and promoting it to Production in MLflow:
+
+```bash
+# Reload model into cache and restart predict pods
+make k3s-reload-model
+```
+
+### Scaling
+
+```bash
+# Manual scaling
+make k3s-scale-predict REPLICAS=3
+
+# Enable HPA (automatic scaling)
+kubectl apply -f deploy/k3s/25-hpa-predict.yaml
+```
+
+### When to Use
+
+- **Docker Compose**: Local development, CI/CD, testing (`make docker-up`, `make docker-test`)
+- **k3s**: Production deployments, horizontal scaling, shared storage
+
+For detailed k3s deployment instructions, see [deploy/k3s/README.md](deploy/k3s/README.md).
+
 ## 🔄 Pipeline Overview
 
 The ML pipeline follows a simple 5-step workflow from raw data to predictions:
@@ -1032,6 +1107,102 @@ export DAGSHUB_REPO="username/repo"
 ```
 
 The tracking URI can also be set in `model_config.yaml`, but environment variables take precedence.
+
+## 🎯 Automatic Feature Selection by Model Type and Version
+
+The system implements **automatic feature selection** based on model metadata, ensuring the correct features are used without manual configuration. This enables:
+
+- **Fixed Frontend API Contract**: Frontend always sends the same canonical input features (never changes)
+- **Metadata-Driven Preprocessing**: Preprocessing pipeline automatically adapts based on model version
+- **MLflow Signature Integration**: Models include MLflow signatures for automatic input validation
+- **Backward Compatibility**: Old models work seamlessly via automatic metadata inference
+
+### Canonical Input Schema
+
+The frontend always sends the same **canonical input features** defined in `src/features/schema.py`. These features represent the raw input before any feature engineering:
+
+- Victim/user features: `place`, `catu`, `sexe`, `secu1`, `year_acc`, `an_nais`
+- Vehicle features: `catv`, `obsm`, `motor`
+- Location/road features: `catr`, `circ`, `surf`, `situ`, `vma`
+- Temporal features: `jour`, `mois`, `an`, `hrmn`
+- Environmental features: `lum`, `dep`, `com`, `agg_`, `int`, `atm`, `col`
+- Geographic coordinates: `lat`, `long`
+- Aggregated features: `nb_victim`, `nb_vehicules`
+- Additional features: `locp`, `actp`, `etatp`, `obs`, `v1`, `vosp`, `prof`, `plan`, `larrout`, `infra`
+
+### Feature Engineering Configuration
+
+Models store feature engineering configuration in metadata:
+
+- **Feature Engineering Version**: e.g., `v2.0-grouped-features`
+- **Grouped Features**: When enabled, categorical features are grouped to reduce cardinality
+  - `place` → `place_group`
+  - `secu1` → `secu_group`
+  - `catv` → `catv_group`
+  - `motor` → `motor_group`
+  - `obsm` → `obsm_group`
+  - `obs` → `obs_group`
+- **Transformations**: Cyclic encoding, interactions, feature removal
+
+### MLflow Signatures
+
+Models are logged to MLflow with:
+
+- **Input Signature**: Defines canonical input features (before preprocessing)
+- **Output Signature**: Defines prediction output format
+- **Input Example**: Example of canonical input format for documentation
+
+This enables:
+- Automatic input validation
+- Self-documenting model interface
+- MLflow serving integration
+- Better error messages
+
+### API Endpoints
+
+The predict service exposes model information endpoints:
+
+- **`GET /api/v1/predict/model-info`**: Get detailed model information including feature engineering config
+- **`GET /api/v1/predict/input-features`**: Get canonical input features expected by the model
+
+Example response from `/api/v1/predict/model-info`:
+
+```json
+{
+  "model_type": "XGBoost",
+  "input_features": ["place", "secu1", "catv", ...],
+  "feature_engineering_config": {
+    "feature_engineering_version": "v2.0-grouped-features",
+    "uses_grouped_features": true,
+    "grouped_feature_mappings": {
+      "place": "place_group",
+      "secu1": "secu_group"
+    },
+    "apply_cyclic_encoding": true,
+    "apply_interactions": true
+  },
+  "mlflow_signature_available": true
+}
+```
+
+### Workflow
+
+**Data Scientist (Training)**:
+1. Train model with feature engineering
+2. System automatically captures canonical input features and feature engineering config
+3. Model logged to MLflow with signature and metadata
+4. No frontend/API changes needed
+
+**MLOps Engineer (Serving)**:
+1. Load model from MLflow registry
+2. System automatically reads signature and metadata
+3. Preprocessing pipeline adapts based on metadata
+4. Input validation via MLflow signature
+
+**Backward Compatibility**:
+- Old models without metadata: Config inferred from feature names
+- Old models without signatures: Fallback to metadata or canonical schema
+- Graceful degradation ensures all models work
 
 ## 🔄 Multi-Model Training Framework
 

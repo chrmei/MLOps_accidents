@@ -3,6 +3,7 @@ Data service FastAPI application.
 """
 
 import logging
+import os
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -23,6 +24,27 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+def _ensure_data_dirs() -> None:
+    """Create data directories if they do not exist."""
+    for path in (
+        settings.DATA_DIR,
+        settings.RAW_DATA_DIR,
+        settings.PREPROCESSED_DATA_DIR,
+        settings.MODELS_DIR,
+    ):
+        if not path:
+            continue
+        try:
+            os.makedirs(path, exist_ok=True)
+        except OSError:
+            logging.exception("Failed to create data directory: %s", path)
+
+
+@app.on_event("startup")
+async def _startup() -> None:
+    _ensure_data_dirs()
 
 
 @app.get("/health", response_model=HealthResponse)

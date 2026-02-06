@@ -274,7 +274,9 @@ def load_best_production_model(
         stage=stage,
         config_path=config_path,
     )
-    return model, label_encoders, metadata, best_model_type
+    # Extract model_uri from metadata if available
+    model_uri = metadata.get("model_uri") if isinstance(metadata, dict) else None
+    return model, label_encoders, metadata, best_model_type, model_uri
 
 
 def get_model_name_from_config(
@@ -448,7 +450,8 @@ def load_model_from_registry(
 
     # Load metadata and label encoders from MLflow artifacts
     label_encoders = None
-    metadata = None
+    # Initialize metadata as dict for backward compatibility
+    metadata = {}
 
     try:
         from mlflow.tracking import MlflowClient
@@ -535,13 +538,33 @@ def load_model_from_registry(
                 )
 
             if os.path.exists(metadata_file):
-                metadata = joblib.load(metadata_file)
+                loaded_metadata = joblib.load(metadata_file)
+                # Ensure metadata is a dict
+                if isinstance(loaded_metadata, dict):
+                    metadata.update(loaded_metadata)
+                else:
+                    logger.warning(f"Metadata file exists but is not a dict (type: {type(loaded_metadata)})")
                 logger.info("Loaded model metadata from MLflow artifacts")
             else:
                 logger.warning(
                     "Model metadata not found in MLflow artifacts. "
                     "Consider storing metadata as MLflow artifacts during training."
                 )
+            
+            # Infer missing feature engineering config for backward compatibility
+            if metadata and not metadata.get("feature_engineering_version"):
+                logger.info("Inferring feature engineering config for backward compatibility...")
+                inferred_config = infer_feature_engineering_config(model, metadata)
+                metadata.update(inferred_config)
+                
+                # Also infer input features if missing
+                if not metadata.get("input_features"):
+                    from src.features.schema import get_canonical_input_features
+                    metadata["input_features"] = get_canonical_input_features()
+                    logger.info("Inferred input features from canonical schema")
+            
+            # Store model_uri for later use (e.g., accessing MLflow signature)
+            metadata["model_uri"] = model_uri
 
             # Load label encoders - try multiple possible locations
             encoders_file = os.path.join(search_base, "label_encoders.joblib")
@@ -583,8 +606,27 @@ def load_model_from_registry(
             )
 
         if os.path.exists(local_metadata_path):
-            metadata = joblib.load(local_metadata_path)
-            logger.info(f"Loaded metadata from local filesystem: {local_metadata_path}")
+            loaded_metadata = joblib.load(local_metadata_path)
+            if isinstance(loaded_metadata, dict):
+                metadata.update(loaded_metadata)
+                logger.info(f"Loaded metadata from local filesystem: {local_metadata_path}")
+            else:
+                logger.warning(f"Metadata file exists but is not a dict (type: {type(loaded_metadata)})")
+        
+        # Infer missing feature engineering config for backward compatibility
+        if metadata and not metadata.get("feature_engineering_version"):
+            logger.info("Inferring feature engineering config for backward compatibility...")
+            inferred_config = infer_feature_engineering_config(model, metadata)
+            metadata.update(inferred_config)
+            
+            # Also infer input features if missing
+            if not metadata.get("input_features"):
+                from src.features.schema import get_canonical_input_features
+                metadata["input_features"] = get_canonical_input_features()
+                logger.info("Inferred input features from canonical schema")
+    
+    # Store model_uri for later use (e.g., accessing MLflow signature)
+    metadata["model_uri"] = model_uri
 
     return model, label_encoders, metadata
 
@@ -625,7 +667,7 @@ def load_model_artifacts(model_path: str):
 
     # Load feature metadata - use the same pattern as base_trainer.py
     metadata_path = model_path.replace(".joblib", "_metadata.joblib")
-    metadata = None
+    metadata = {}
     if os.path.exists(metadata_path):
         loaded_metadata = joblib.load(metadata_path)
         # Ensure metadata is a dictionary (not a Pipeline or other object)
@@ -639,8 +681,93 @@ def load_model_artifacts(model_path: str):
             )
     else:
         logger.warning(f"Feature metadata not found at {metadata_path}")
+    
+    # Infer missing feature engineering config for backward compatibility
+    if metadata and not metadata.get("feature_engineering_version"):
+        logger.info("Inferring feature engineering config for backward compatibility...")
+        inferred_config = infer_feature_engineering_config(model, metadata)
+        metadata.update(inferred_config)
+        
+        # Also infer input features if missing
+        if not metadata.get("input_features"):
+            from src.features.schema import get_canonical_input_features
+            metadata["input_features"] = get_canonical_input_features()
+            logger.info("Inferred input features from canonical schema")
 
     return model, label_encoders, metadata
+
+
+def infer_feature_engineering_config(model, metadata=None):
+    """
+    Infer feature engineering configuration for backward compatibility with old models.
+    
+    Detects if grouped features are used by checking feature names and builds
+    appropriate configuration.
+    
+    Parameters
+    ----------
+    model : object
+        Trained model (pipeline)
+    metadata : dict, optional
+        Feature metadata dictionary
+        
+    Returns
+    -------
+    dict
+        Feature engineering configuration dictionary
+    """
+    # Get feature names
+    feature_names = None
+    if metadata and isinstance(metadata, dict) and "feature_names" in metadata:
+        feature_names = metadata["feature_names"]
+    else:
+        # Try to extract from model
+        if hasattr(model, "steps") and len(model.steps) > 0:
+            estimator = model.steps[-1][1]
+            if hasattr(estimator, "feature_names_in_") and estimator.feature_names_in_ is not None:
+                feature_names = list(estimator.feature_names_in_)
+    
+    if feature_names is None:
+        # Can't infer without feature names
+        return {
+            "feature_engineering_version": "v1.0-legacy",
+            "uses_grouped_features": False,
+            "grouped_feature_mappings": {},
+            "removed_features": [],
+        }
+    
+    # Detect grouped features
+    grouped_features = ["place_group", "secu_group", "catv_group", "motor_group", "obsm_group", "obs_group"]
+    uses_grouped_features = any(feat in feature_names for feat in grouped_features)
+    
+    # Build grouped feature mappings
+    grouped_feature_mappings = {}
+    removed_features = []
+    if uses_grouped_features:
+        mapping_pairs = [
+            ("place", "place_group"),
+            ("secu1", "secu_group"),
+            ("catv", "catv_group"),
+            ("motor", "motor_group"),
+            ("obsm", "obsm_group"),
+            ("obs", "obs_group"),
+        ]
+        for source, grouped in mapping_pairs:
+            if grouped in feature_names:
+                grouped_feature_mappings[source] = grouped
+                # If source feature is not in final features, it was removed
+                if source not in feature_names:
+                    removed_features.append(source)
+    
+    # Determine version
+    feature_engineering_version = "v2.0-grouped-features" if uses_grouped_features else "v1.0-legacy"
+    
+    return {
+        "feature_engineering_version": feature_engineering_version,
+        "uses_grouped_features": uses_grouped_features,
+        "grouped_feature_mappings": grouped_feature_mappings,
+        "removed_features": removed_features,
+    }
 
 
 def get_expected_features(model, metadata=None):
@@ -827,6 +954,7 @@ def predict(
         apply_cyclic_encoding=apply_cyclic_encoding,
         apply_interactions=apply_interactions,
         model_type=model_type_display,
+        metadata=metadata,
     )
 
     # Get expected features from model

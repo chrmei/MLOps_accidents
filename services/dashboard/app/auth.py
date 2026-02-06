@@ -29,22 +29,45 @@ def login(username: str, password: str) -> tuple[bool, Any]:
     POST /api/v1/auth/login.
     Returns (True, data_dict) on success, (False, error_message) on failure.
     """
+    # Validate inputs before making request
+    if not username or not password:
+        return False, "Username and password are required"
+    
+    username = username.strip()
+    if len(username) < 3:
+        return False, "Username must be at least 3 characters"
+    
     try:
         with httpx.Client(base_url=get_api_base(), timeout=15.0) as client:
             r = client.post(
                 "/api/v1/auth/login",
                 json={"username": username, "password": password},
             )
-            if r.status_code != 200:
-                detail = "Login failed"
-                try:
-                    detail = r.json().get("detail", detail)
-                except Exception:
-                    pass
-                return False, detail
-            return True, r.json()
+            if r.status_code == 200:
+                return True, r.json()
+            
+            # Handle different error status codes
+            detail = "Login failed"
+            try:
+                error_data = r.json()
+                detail = error_data.get("detail", detail)
+                # Add status code context for debugging
+                if r.status_code == 422:
+                    detail = f"Validation error: {detail}"
+                elif r.status_code == 429:
+                    detail = f"Too many requests. Please wait: {detail}"
+                elif r.status_code == 503:
+                    detail = f"Service temporarily unavailable: {detail}"
+            except Exception:
+                detail = f"Login failed with status {r.status_code}"
+            
+            return False, detail
+    except httpx.TimeoutException:
+        return False, "Request timed out. Please try again."
+    except httpx.ConnectError:
+        return False, "Cannot connect to authentication service."
     except Exception as e:
-        return False, str(e)
+        return False, f"Unexpected error: {str(e)}"
 
 
 def fetch_me(access_token: str) -> Optional[dict]:

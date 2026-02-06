@@ -32,9 +32,20 @@ def render_login():
         # Handle form submission and display messages within the column
         if not submitted:
             return
+        
+        # Validate inputs: strip whitespace and check for empty values
+        username = username.strip() if username else ""
+        password = password.strip() if password else ""
+        
         if not username or not password:
             st.error("Username and password are required.")
             return
+        
+        # Additional validation: username must be at least 3 characters (API requirement)
+        if len(username) < 3:
+            st.error("Username must be at least 3 characters.")
+            return
+        
         ok, result = login(username, password)
         if not ok:
             st.error(result)
