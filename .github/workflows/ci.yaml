@@ -36,7 +36,7 @@ jobs:
       - name: Install dependencies
         run: |
           curl -LsSf https://astral.sh/uv/install.sh | sh
-          uv pip install flake8 black isort mypy
+          uv pip install --system flake8 black isort mypy
 
       - name: Run Black (code formatter check)
         run: black --check --diff src tests services
