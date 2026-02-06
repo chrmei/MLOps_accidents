@@ -42,14 +42,14 @@ spec:
             cpu: "1000m"
         livenessProbe:
           httpGet:
-            path: /_stcore/health
+            path: /dashboard/_stcore/health
             port: 8501
           initialDelaySeconds: 30
           periodSeconds: 30
           timeoutSeconds: 10
         readinessProbe:
           httpGet:
-            path: /_stcore/health
+            path: /dashboard/_stcore/health
             port: 8501
           initialDelaySeconds: 10
           periodSeconds: 10

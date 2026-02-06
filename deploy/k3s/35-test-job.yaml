@@ -30,6 +30,8 @@ spec:
           value: "http://nginx:80"
         - name: NOCONFIRM
           value: "1"
+        # Admin credentials for login-required tests. Must match auth service admin (same secret).
+        # If missing, conftest uses defaults; auth must have been created with same credentials.
         - name: ADMIN_USERNAME
           valueFrom:
             secretKeyRef:
