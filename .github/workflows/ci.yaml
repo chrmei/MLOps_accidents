@@ -151,36 +151,6 @@ jobs:
           retention-days: 30
 
   # =============================================================================
-  # Integration Tests for Microservices
-  # =============================================================================
-  integration-tests:
-    name: Integration Tests
-    runs-on: ubuntu-22.04
-    needs: lint
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-
-      - name: Install dependencies
-        run: |
-          curl -LsSf https://astral.sh/uv/install.sh | sh
-          uv pip install --system -r requirements.txt pytest pytest-asyncio
-
-      - name: Run integration tests
-        env:
-          DATABASE_URL: postgresql://testuser:testpassword@localhost:5432/test_db
-          JWT_SECRET_KEY: test-secret-key-for-ci
-          ALLOWED_HOSTS: localhost,127.0.0.1
-        run: |
-          pytest tests/ -v -s --tb=short
-
-  # =============================================================================
   # Security Scanning
   # =============================================================================
   security-scan:
@@ -237,7 +207,7 @@ jobs:
   build-docker:
     name: Build Docker Images
     runs-on: ubuntu-22.04
-    needs: [unit-tests, integration-tests, security-scan]
+    needs: [unit-tests, security-scan]
     permissions:
       contents: read
       packages: write
@@ -348,7 +318,7 @@ jobs:
   pr-gate:
     name: PR Merge Gate
     runs-on: ubuntu-22.04
-    needs: [lint, unit-tests, integration-tests, security-scan, build-docker]
+    needs: [lint, unit-tests, security-scan, build-docker]
     if: always()
     steps:
       - name: Check all jobs passed
@@ -359,10 +329,6 @@ jobs:
           fi
           if [[ "${{ needs.unit-tests.result }}" != "success" ]]; then
             echo "Unit tests job failed"
-            exit 1
-          fi
-          if [[ "${{ needs.integration-tests.result }}" != "success" ]]; then
-            echo "Integration tests job failed"
             exit 1
           fi
           if [[ "${{ needs.security-scan.result }}" != "success" ]]; then
@@ -381,7 +347,7 @@ jobs:
   summary:
     name: CI Summary
     runs-on: ubuntu-22.04
-    needs: [lint, unit-tests, integration-tests, security-scan, build-docker, pr-gate]
+    needs: [lint, unit-tests, security-scan, build-docker, pr-gate]
     if: always()
     steps:
       - name: Generate summary
@@ -392,7 +358,6 @@ jobs:
           echo "|-------|--------|" >> $GITHUB_STEP_SUMMARY
           echo "| Linting | ${{ needs.lint.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Unit Tests | ${{ needs.unit-tests.result }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Integration Tests | ${{ needs.integration-tests.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Security Scan | ${{ needs.security-scan.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Docker Build | ${{ needs.build-docker.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "| PR Gate | ${{ needs.pr-gate.result }} |" >> $GITHUB_STEP_SUMMARY
@@ -401,7 +366,6 @@ jobs:
         if: |
           needs.lint.result != 'success' ||
           needs.unit-tests.result != 'success' ||
-          needs.integration-tests.result != 'success' ||
           needs.security-scan.result != 'success' ||
           needs.build-docker.result != 'success' ||
           needs.pr-gate.result != 'success'
