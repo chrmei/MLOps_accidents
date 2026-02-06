@@ -209,9 +209,15 @@ async def http_client() -> AsyncGenerator[AsyncClient, None]:
 @pytest.fixture
 def admin_credentials() -> dict:
     """Admin credentials for testing (from env: ADMIN_USERNAME, ADMIN_PASSWORD)."""
+    username = os.getenv("ADMIN_USERNAME", "admin")
+    password = os.getenv("ADMIN_PASSWORD", "admin")
+    if len(username) < 3:
+        username = "admin"
+    if len(password) < 8:
+        password = "admin"
     return {
-        "username": os.getenv("ADMIN_USERNAME", ""),
-        "password": os.getenv("ADMIN_PASSWORD", ""),
+        "username": username,
+        "password": password,
     }
 
 
