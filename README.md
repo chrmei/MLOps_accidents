@@ -147,6 +147,81 @@ The production stage is commented out in the Dockerfile. To enable:
 
 > **Note**: The prod stage will be updated to run FastAPI when the API is implemented (Phase 1).
 
+## ☸️ k3s Deployment (Production)
+
+The project includes Kubernetes manifests for deploying to k3s (lightweight Kubernetes) with horizontal scaling support.
+
+### ⚠️ Security Note
+
+**Never commit secrets to git!** The following files are gitignored:
+- `.env` (contains actual secrets)
+- `deploy/k3s/02-secret.yaml` (if created manually, not recommended)
+
+The recommended approach is to use `make k3s-create-secrets` which reads from `.env` (gitignored) and creates secrets directly in Kubernetes without storing them in files.
+
+See `.env.example` for required secret variables.
+
+### Quick Start
+
+**Prerequisites:**
+- k3s installed (`curl -sfL https://get.k3s.io | sh`)
+- kubectl configured
+- `.env` file with secrets (copy from `.env.example`)
+
+**Deploy:**
+
+```bash
+# 1. Build and import images
+make k3s-build-images
+make k3s-import-images
+
+# 2. Create secrets from .env (reads from gitignored .env file)
+make k3s-create-secrets
+
+# 3. Deploy all services
+make k3s-deploy
+
+# 4. Check status
+make k3s-status
+
+# 5. Access API at http://<node-ip>:30080
+make k3s-get-node-ip
+```
+
+### Key Features
+
+- **Multi-replica predict service** (2+ replicas) with load balancing
+- **Shared model cache** via PVC for faster startup
+- **Model reload workflow**: Job + rolling restart
+- **Optional HPA** for automatic scaling (CPU-based)
+- **All microservices** deployed and managed
+
+### Model Reload Workflow
+
+After training a new model and promoting it to Production in MLflow:
+
+```bash
+# Reload model into cache and restart predict pods
+make k3s-reload-model
+```
+
+### Scaling
+
+```bash
+# Manual scaling
+make k3s-scale-predict REPLICAS=3
+
+# Enable HPA (automatic scaling)
+kubectl apply -f deploy/k3s/25-hpa-predict.yaml
+```
+
+### When to Use
+
+- **Docker Compose**: Local development, CI/CD, testing (`make docker-up`, `make docker-test`)
+- **k3s**: Production deployments, horizontal scaling, shared storage
+
+For detailed k3s deployment instructions, see [deploy/k3s/README.md](deploy/k3s/README.md).
+
 ## 🔄 Pipeline Overview
 
 The ML pipeline follows a simple 5-step workflow from raw data to predictions:

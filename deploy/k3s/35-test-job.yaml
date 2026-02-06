@@ -1,0 +1,66 @@
+---
+# Job to run API endpoint tests against k3s-deployed services
+# Usage: kubectl apply -f 35-test-job.yaml -n mlops
+# Then: kubectl wait --for=condition=complete --timeout=300s job/api-test -n mlops
+# View logs: kubectl logs job/api-test -n mlops
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: api-test
+  namespace: mlops
+spec:
+  template:
+    spec:
+      containers:
+      - name: test
+        image: mlops-accidents:test_service
+        imagePullPolicy: Never
+        command:
+        - pytest
+        args:
+        - tests/
+        - -v
+        - --tb=short
+        env:
+        - name: PYTHONUNBUFFERED
+          value: "1"
+        - name: PYTHONPATH
+          value: "/app"
+        - name: BASE_URL
+          value: "http://nginx:80"
+        - name: NOCONFIRM
+          value: "1"
+        - name: ADMIN_USERNAME
+          valueFrom:
+            secretKeyRef:
+              name: mlops-secrets
+              key: ADMIN_USERNAME
+              optional: true
+        - name: ADMIN_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mlops-secrets
+              key: ADMIN_PASSWORD
+              optional: true
+        - name: TEST_USER_USERNAME
+          valueFrom:
+            secretKeyRef:
+              name: mlops-secrets
+              key: TEST_USER_USERNAME
+              optional: true
+        - name: TEST_USER_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mlops-secrets
+              key: TEST_USER_PASSWORD
+              optional: true
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "500m"
+          limits:
+            memory: "512Mi"
+            cpu: "1000m"
+      restartPolicy: Never
+  backoffLimit: 2
+  activeDeadlineSeconds: 600  # 10 minutes max runtime
