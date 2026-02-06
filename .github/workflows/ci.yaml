@@ -64,20 +64,6 @@ jobs:
     strategy:
       matrix:
         python-version: ['3.10', '3.11', '3.12']
-    services:
-      postgres:
-        image: postgres:15-alpine
-        env:
-          POSTGRES_DB: test_db
-          POSTGRES_USER: testuser
-          POSTGRES_PASSWORD: testpassword
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-        ports:
-          - 5432:5432
 
     steps:
       - name: Checkout code
@@ -171,20 +157,6 @@ jobs:
     name: Integration Tests
     runs-on: ubuntu-22.04
     needs: lint
-    services:
-      postgres:
-        image: postgres:15-alpine
-        env:
-          POSTGRES_DB: test_db
-          POSTGRES_USER: testuser
-          POSTGRES_PASSWORD: testpassword
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-        ports:
-          - 5432:5432
 
     steps:
       - name: Checkout code
@@ -206,7 +178,7 @@ jobs:
           JWT_SECRET_KEY: test-secret-key-for-ci
           ALLOWED_HOSTS: localhost,127.0.0.1
         run: |
-          pytest tests/services/ -v -s --tb=short
+          pytest tests/ -v -s --tb=short
 
   # =============================================================================
   # Security Scanning
