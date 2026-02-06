@@ -71,6 +71,8 @@ services:
         condition: service_healthy
       predict:
         condition: service_healthy
+      geocode:
+        condition: service_healthy
       docs:
         condition: service_healthy
     networks:
@@ -256,6 +258,41 @@ services:
       timeout: 10s
       retries: 3
       start_period: 60s
+
+  # ===========================================================================
+  # Geocode Service - Address to Latitude/Longitude Conversion
+  # ===========================================================================
+  geocode:
+    build:
+      context: .
+      dockerfile: ./services/Dockerfile.python
+      target: geocode_service
+    container_name: mlops-geocode-service
+    environment:
+      - SERVICE_NAME=geocode-service
+      - DEBUG=${DEBUG:-false}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY}
+      - JWT_ALGORITHM=${JWT_ALGORITHM:-HS256}
+      - GEOCODE_PROVIDER=${GEOCODE_PROVIDER:-nominatim}
+      - NOMINATIM_BASE_URL=${NOMINATIM_BASE_URL:-https://nominatim.openstreetmap.org}
+      - NOMINATIM_USER_AGENT=${NOMINATIM_USER_AGENT:-MLOps-Accidents-Geocoding/1.0}
+      - GOOGLE_GEOCODING_API_KEY=${GOOGLE_GEOCODING_API_KEY:-}
+      - GEOCODE_RATE_LIMIT_PER_SECOND=${GEOCODE_RATE_LIMIT_PER_SECOND:-1}
+      - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:3000,http://localhost:8080}
+      - PYTHONUNBUFFERED=1
+      - PYTHONWARNINGS=ignore
+    ports:
+      - "8005:8005"
+    networks:
+      - mlops-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8005/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
 
   # ===========================================================================
   # Docs Service - Unified OpenAPI /docs and /openapi.json
