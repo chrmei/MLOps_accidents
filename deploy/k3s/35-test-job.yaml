@@ -64,5 +64,5 @@ spec:
             memory: "512Mi"
             cpu: "1000m"
       restartPolicy: Never
-  backoffLimit: 2
+  backoffLimit: 0
   activeDeadlineSeconds: 600  # 10 minutes max runtime
