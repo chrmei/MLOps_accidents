@@ -93,9 +93,43 @@ jobs:
           curl -LsSf https://astral.sh/uv/install.sh | sh
           uv pip install --system -r requirements.txt pytest pytest-cov pytest-asyncio
 
+      - name: Create .env for docker-compose
+        run: |
+          cat > .env << EOF
+          POSTGRES_USER=testuser
+          POSTGRES_PASSWORD=testpassword
+          POSTGRES_DB=test_db
+          JWT_SECRET_KEY=test-secret-key-for-ci
+          JWT_ALGORITHM=HS256
+          DEBUG=false
+          LOG_LEVEL=INFO
+          ADMIN_USERNAME=admin
+          ADMIN_PASSWORD=admin
+          ADMIN_EMAIL=admin@example.com
+          MLFLOW_TRACKING_URI=https://example.invalid/mlflow
+          ALLOWED_HOSTS=localhost,127.0.0.1
+          EOF
+
+      - name: Start services with docker compose
+        run: |
+          docker compose up -d postgres auth data train predict
+          echo "Waiting for services to be healthy..."
+          for i in {1..30}; do
+            if curl -sf http://localhost:8004/health >/dev/null && \
+               curl -sf http://localhost:8001/health >/dev/null && \
+               curl -sf http://localhost:8002/health >/dev/null && \
+               curl -sf http://localhost:8003/health >/dev/null; then
+              echo "Services are healthy."
+              break
+            fi
+            sleep 5
+          done
+          docker compose ps
+
       - name: Run unit tests with coverage
         env:
           DATABASE_URL: postgresql://testuser:testpassword@localhost:5432/test_db
+          JWT_SECRET_KEY: test-secret-key-for-ci
         run: |
           pytest tests/test_auth_service.py tests/test_data_service.py tests/test_predict_service.py tests/test_train_service.py \
             --cov=src \
@@ -105,6 +139,14 @@ jobs:
             --cov-report=term-missing \
             --cov-fail-under=70 \
             -v
+
+      - name: Show service logs on failure
+        if: failure()
+        run: docker compose logs
+
+      - name: Stop services
+        if: always()
+        run: docker compose down -v
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v3
