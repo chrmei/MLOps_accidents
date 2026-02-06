@@ -1,9 +1,10 @@
 """Control Center: prediction form, map, result."""
+
 from __future__ import annotations
 
+import folium
 import streamlit as st
 from streamlit_folium import st_folium
-import folium
 
 from ..components.api_client import post
 from ..components.prediction_form import render_prediction_form

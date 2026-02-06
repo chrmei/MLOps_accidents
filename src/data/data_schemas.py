@@ -4,7 +4,9 @@ Data Schemas for validating road accident data using Pandera.
 This module defines schemas for users, characteristics, vehicles, and places data that can be found under `./data/raw/`,
 where the data types and value ranges are specified in `./references/description-des-bases-de-donnees-annuelles.pdf`.
 """
+
 import pandera.pandas as pa
+
 
 class UserSchema(pa.DataFrameModel):
     Num_Acc: int = pa.Field(ge=200000000001, le=202699999999)
@@ -27,6 +29,7 @@ class UserSchema(pa.DataFrameModel):
         name = "UserSchema"
         coerce = True
 
+
 class CharactSchema(pa.DataFrameModel):
     Num_Acc: int = pa.Field(ge=200000000001, le=202699999999, unique=True)
     jour: int = pa.Field(ge=1, le=31, nullable=True)
@@ -42,12 +45,15 @@ class CharactSchema(pa.DataFrameModel):
     col: int = pa.Field(ge=-1, le=7, ne=0, nullable=True)
     adr: str = pa.Field(nullable=True)
     lat: str = pa.Field(str_matches=r"^\s*-?(?:[0-8]?\d|90),\d+$", nullable=True)
-    long: str = pa.Field(str_matches=r"^\s*-?(?:1[0-7]\d|0?\d?\d|180),\d+$", nullable=True)
+    long: str = pa.Field(
+        str_matches=r"^\s*-?(?:1[0-7]\d|0?\d?\d|180),\d+$", nullable=True
+    )
 
     class Config:
         name = "CaractSchema"
         coerce = True
-    
+
+
 class PlaceSchema(pa.DataFrameModel):
     Num_Acc: int = pa.Field(ge=200000000001, le=202699999999, unique=True)
     catr: int = pa.Field(ge=1, le=9, nullable=True)
@@ -71,6 +77,7 @@ class PlaceSchema(pa.DataFrameModel):
     class Config:
         name = "PlaceSchema"
         coerce = True
+
 
 class VehicleSchema(pa.DataFrameModel):
     Num_Acc: int = pa.Field(ge=200000000001, le=202699999999)

@@ -8,9 +8,9 @@ ready for XGBoost model training, including:
 - Categorical feature transformations
 - Feature encoding and interactions
 """
+
 import logging
 import os
-from pathlib import Path
 from typing import Dict, Optional
 
 import click
@@ -392,29 +392,29 @@ def prepare_input_for_feature_engineering(
 ) -> pd.DataFrame:
     """
     Prepare input features dictionary for feature engineering pipeline.
-    
+
     Converts user-friendly input format to interim dataset format expected
     by build_features. Handles common input variations (e.g., year_acc vs an,
     hour vs hrmn).
-    
+
     This function is used for inference when input comes as a dictionary
     instead of a DataFrame. It ensures the input is in the correct format
     for the feature engineering pipeline.
-    
+
     Parameters
     ----------
     features : dict
         Input features dictionary (can be in simplified or interim format)
     default_values : dict, optional
         Default values for missing columns. If None, uses standard defaults.
-        
+
     Returns
     -------
     pd.DataFrame
         DataFrame in interim dataset format ready for build_features
     """
     df = pd.DataFrame([features])
-    
+
     # Standard default values for interim dataset columns
     if default_values is None:
         default_values = {
@@ -429,16 +429,16 @@ def prepare_input_for_feature_engineering(
             "larrout": 0.0,
             "infra": 0,
         }
-    
+
     # Convert year_acc to an if needed (an is used for datetime creation)
     if "year_acc" in df.columns and "an" not in df.columns:
         df["an"] = df["year_acc"]
-    
+
     # Ensure hrmn is in HH:MM format if hour is provided instead
     if "hour" in df.columns and "hrmn" not in df.columns:
         hour = int(df["hour"].iloc[0])
         df["hrmn"] = f"{hour:02d}:00"
-    
+
     # Ensure jour, mois, an are present for datetime creation
     if "jour" not in df.columns:
         df["jour"] = 1
@@ -446,7 +446,7 @@ def prepare_input_for_feature_engineering(
         df["mois"] = 1
     if "an" not in df.columns and "year_acc" in df.columns:
         df["an"] = df["year_acc"]
-    
+
     # Calculate an_nais from victim_age if victim_age is provided but an_nais is not
     if "victim_age" in df.columns and "an_nais" not in df.columns:
         if "year_acc" in df.columns:
@@ -457,21 +457,25 @@ def prepare_input_for_feature_engineering(
             df["an_nais"] = 1900
     elif "an_nais" not in df.columns:
         df["an_nais"] = 1900
-    
+
     # Remove victim_age if present (it will be recalculated by build_features)
     if "victim_age" in df.columns:
         df = df.drop(columns=["victim_age"])
-    
+
     # Add missing columns with default values
     for col, default_val in default_values.items():
         if col not in df.columns:
             df[col] = default_val
-    
+
     return df
 
 
 def build_features(
-    df_interim, apply_cyclic_encoding=True, apply_interactions=True, label_encoders=None, model_type=None
+    df_interim,
+    apply_cyclic_encoding=True,
+    apply_interactions=True,
+    label_encoders=None,
+    model_type=None,
 ):
     """
     Main function to build all features from interim dataset for XGBoost.

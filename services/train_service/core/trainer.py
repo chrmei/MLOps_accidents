@@ -5,16 +5,15 @@ Training helpers for the train service.
 import logging
 from typing import Dict, List, Optional
 
-import pandas as pd
 import yaml
 
+from src.models.mlflow_utils import setup_mlflow
 from src.models.train_multi_model import (
     compare_models,
     create_trainer,
     get_available_models,
     train_single_model,
 )
-from src.models.mlflow_utils import setup_mlflow
 
 logger = logging.getLogger(__name__)
 
@@ -48,7 +47,9 @@ def run_training(
         selected_models = [m.lower() for m in model_types]
     else:
         multi_model_config = config_dict.get("multi_model", {})
-        selected_models = multi_model_config.get("enabled_models", get_available_models())
+        selected_models = multi_model_config.get(
+            "enabled_models", get_available_models()
+        )
 
     # Determine grid search flag
     if grid_search is None:
@@ -63,7 +64,10 @@ def run_training(
     logger.info("MLflow: %s", "enabled" if mlflow_enabled else "disabled")
 
     # Load and split data once for all models
-    logger.info("Loading and splitting data (shared across %d model(s))...", len(selected_models))
+    logger.info(
+        "Loading and splitting data (shared across %d model(s))...",
+        len(selected_models),
+    )
     base_trainer = create_trainer(selected_models[0], config_dict)
     X, y = base_trainer.load_data()
     X_train, X_test, y_train, y_test = base_trainer.split_data(X, y)
@@ -93,9 +97,7 @@ def run_training(
         logger.info("Comparing models and selecting best...")
         comparison_df = compare_models(results)
         if not comparison_df.empty:
-            comparison_path = (
-                f"{config_dict.get('paths', {}).get('metrics_dir', 'data/metrics')}/model_comparison.csv"
-            )
+            comparison_path = f"{config_dict.get('paths', {}).get('metrics_dir', 'data/metrics')}/model_comparison.csv"
             comparison_df.to_csv(comparison_path, index=False)
             logger.info("Comparison saved to %s", comparison_path)
             best_row = comparison_df.iloc[0]

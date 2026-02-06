@@ -27,7 +27,9 @@ async def lifespan(app: FastAPI):
     try:
         merged = await fetch_and_merge(server_url=DOCS_SERVER_URL)
         app.state.merged_openapi = merged
-        logger.info("Merged OpenAPI spec ready (%s paths)", len(merged.get("paths", {})))
+        logger.info(
+            "Merged OpenAPI spec ready (%s paths)", len(merged.get("paths", {}))
+        )
     except Exception as e:
         logger.exception("Failed to build merged OpenAPI spec")
         raise RuntimeError("Docs service could not fetch backend specs") from e

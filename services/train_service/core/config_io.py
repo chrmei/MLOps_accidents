@@ -26,10 +26,14 @@ def save_config(path: str, config: Dict[str, Any]) -> None:
     path_obj = Path(path)
     path_obj.parent.mkdir(parents=True, exist_ok=True)
     with open(path, "w", encoding="utf-8") as f:
-        yaml.safe_dump(config, f, default_flow_style=False, allow_unicode=True, sort_keys=False)
+        yaml.safe_dump(
+            config, f, default_flow_style=False, allow_unicode=True, sort_keys=False
+        )
 
 
-def ensure_config_exists(active_path: str, default_path: str = DEFAULT_REPO_CONFIG_PATH) -> None:
+def ensure_config_exists(
+    active_path: str, default_path: str = DEFAULT_REPO_CONFIG_PATH
+) -> None:
     """
     If the active config file does not exist, copy from the default repo config.
     Call on first run so the writable config (e.g. /app/data/model_config.yaml) is seeded.
@@ -45,6 +49,10 @@ def ensure_config_exists(active_path: str, default_path: str = DEFAULT_REPO_CONF
         return
     try:
         shutil.copy2(default_path, active_path)
-        logger.info("Copied default config from %s to %s (first run).", default_path, active_path)
+        logger.info(
+            "Copied default config from %s to %s (first run).",
+            default_path,
+            active_path,
+        )
     except OSError as e:
         logger.warning("Could not copy default config to %s: %s", active_path, e)

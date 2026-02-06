@@ -1,6 +1,8 @@
 """Login view: form and redirect on success."""
-import streamlit as st
+
 import time
+
+import streamlit as st
 
 from ..auth import (
     EXPIRES_AT_KEY,
@@ -18,7 +20,12 @@ def render_login():
     st.markdown("Sign in to access the Control Center.")
     with st.form("login_form"):
         username = st.text_input("Username", key="login_username")
-        password = st.text_input("Password", type="password", key="login_password", autocomplete="current-password")
+        password = st.text_input(
+            "Password",
+            type="password",
+            key="login_password",
+            autocomplete="current-password",
+        )
         submitted = st.form_submit_button("Sign in")
     st.markdown("---")
     if st.button("Forgot password?", key="login_forgot"):
@@ -40,6 +47,7 @@ def render_login():
     st.session_state[EXPIRES_AT_KEY] = time.time() + expires_in
     # Fetch user for role
     from ..auth import fetch_me
+
     user = fetch_me(st.session_state[TOKEN_KEY])
     if user:
         st.session_state[USER_KEY] = user

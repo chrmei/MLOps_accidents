@@ -2,6 +2,7 @@
 Authentication and RBAC for Streamlit dashboard.
 Uses existing Auth API (JWT). Custom logic for API-backed auth.
 """
+
 from __future__ import annotations
 
 import os
@@ -10,7 +11,7 @@ from typing import Any, Optional
 
 import httpx
 
-from .config import API_BASE_URL, SESSION_EXPIRE_MINUTES
+from .config import API_BASE_URL
 
 # Session state keys
 TOKEN_KEY = "access_token"

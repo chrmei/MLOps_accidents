@@ -28,7 +28,9 @@ def _model_type_display(model_type: str) -> str:
     if not model_type:
         return "unknown"
     lower = model_type.lower()
-    return MODEL_TYPE_DISPLAY.get(lower) or model_type.replace("_", " ").title().replace(" ", "")
+    return MODEL_TYPE_DISPLAY.get(lower) or model_type.replace(
+        "_", " "
+    ).title().replace(" ", "")
 
 
 def _preprocess_and_predict_one(
@@ -43,7 +45,9 @@ def _preprocess_and_predict_one(
     if metadata and not isinstance(metadata, dict):
         metadata = None
     apply_cyclic_encoding = (
-        metadata.get("apply_cyclic_encoding", True) if isinstance(metadata, dict) else True
+        metadata.get("apply_cyclic_encoding", True)
+        if isinstance(metadata, dict)
+        else True
     )
     apply_interactions = (
         metadata.get("apply_interactions", True) if isinstance(metadata, dict) else True
@@ -75,7 +79,9 @@ def _preprocess_and_predict_one(
     return prediction, proba
 
 
-def make_prediction(features: Dict[str, Any], model_cache: Dict[str, Any]) -> Dict[str, Any]:
+def make_prediction(
+    features: Dict[str, Any], model_cache: Dict[str, Any]
+) -> Dict[str, Any]:
     """
     Make a single prediction using the cached Production model.
 

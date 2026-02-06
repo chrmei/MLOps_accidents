@@ -27,7 +27,9 @@ def preprocess_data(raw_dir: str, preprocessed_dir: str) -> Dict[str, str]:
     """
     os.makedirs(preprocessed_dir, exist_ok=True)
 
-    input_users, input_caract, input_places, input_veh = discover_raw_file_paths(raw_dir)
+    input_users, input_caract, input_places, input_veh = discover_raw_file_paths(
+        raw_dir
+    )
 
     logger.info(
         "Running preprocessing with inputs: %s, %s, %s, %s",

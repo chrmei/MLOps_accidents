@@ -1,4 +1,5 @@
 """Prediction form: inputs for accident features, returns dict for API."""
+
 from __future__ import annotations
 
 import streamlit as st
@@ -53,29 +54,117 @@ def render_prediction_form() -> dict:
     st.subheader("Incident details")
     c1, c2 = st.columns(2)
     with c1:
-        lat = st.number_input("Latitude", value=float(DEFAULTS["lat"]), format="%.4f", key=f"{KEY_PREFIX}lat")
-        long = st.number_input("Longitude", value=float(DEFAULTS["long"]), format="%.4f", key=f"{KEY_PREFIX}long")
-        dep = st.number_input("Department (dep)", value=DEFAULTS["dep"], min_value=1, max_value=99, key=f"{KEY_PREFIX}dep")
-        com = st.number_input("Commune (com)", value=DEFAULTS["com"], min_value=1000, key=f"{KEY_PREFIX}com")
+        lat = st.number_input(
+            "Latitude",
+            value=float(DEFAULTS["lat"]),
+            format="%.4f",
+            key=f"{KEY_PREFIX}lat",
+        )
+        long = st.number_input(
+            "Longitude",
+            value=float(DEFAULTS["long"]),
+            format="%.4f",
+            key=f"{KEY_PREFIX}long",
+        )
+        dep = st.number_input(
+            "Department (dep)",
+            value=DEFAULTS["dep"],
+            min_value=1,
+            max_value=99,
+            key=f"{KEY_PREFIX}dep",
+        )
+        com = st.number_input(
+            "Commune (com)",
+            value=DEFAULTS["com"],
+            min_value=1000,
+            key=f"{KEY_PREFIX}com",
+        )
     with c2:
-        jour = st.number_input("Day (jour)", value=7, min_value=1, max_value=31, key=f"{KEY_PREFIX}jour")
-        mois = st.number_input("Month (mois)", value=12, min_value=1, max_value=12, key=f"{KEY_PREFIX}mois")
-        an = st.number_input("Year (an)", value=2021, min_value=2015, max_value=2030, key=f"{KEY_PREFIX}an")
+        jour = st.number_input(
+            "Day (jour)", value=7, min_value=1, max_value=31, key=f"{KEY_PREFIX}jour"
+        )
+        mois = st.number_input(
+            "Month (mois)", value=12, min_value=1, max_value=12, key=f"{KEY_PREFIX}mois"
+        )
+        an = st.number_input(
+            "Year (an)",
+            value=2021,
+            min_value=2015,
+            max_value=2030,
+            key=f"{KEY_PREFIX}an",
+        )
         hrmn_str = st.text_input("Time (HH:MM)", value="17:00", key=f"{KEY_PREFIX}hrmn")
     st.markdown("---")
     c3, c4 = st.columns(2)
     with c3:
-        place = st.number_input("Place", value=DEFAULTS["place"], min_value=1, max_value=20, key=f"{KEY_PREFIX}place")
-        catu = st.number_input("User category (catu)", value=DEFAULTS["catu"], min_value=1, max_value=5, key=f"{KEY_PREFIX}catu")
-        sexe = st.selectbox("Sex (sexe)", options=[1, 2], format_func=lambda x: "Male" if x == 1 else "Female", key=f"{KEY_PREFIX}sexe")
-        an_nais = st.number_input("Birth year (an_nais)", value=DEFAULTS["an_nais"], min_value=1920, max_value=2010, key=f"{KEY_PREFIX}an_nais")
-        catv = st.number_input("Vehicle category (catv)", value=DEFAULTS["catv"], min_value=0, max_value=20, key=f"{KEY_PREFIX}catv")
+        place = st.number_input(
+            "Place",
+            value=DEFAULTS["place"],
+            min_value=1,
+            max_value=20,
+            key=f"{KEY_PREFIX}place",
+        )
+        catu = st.number_input(
+            "User category (catu)",
+            value=DEFAULTS["catu"],
+            min_value=1,
+            max_value=5,
+            key=f"{KEY_PREFIX}catu",
+        )
+        sexe = st.selectbox(
+            "Sex (sexe)",
+            options=[1, 2],
+            format_func=lambda x: "Male" if x == 1 else "Female",
+            key=f"{KEY_PREFIX}sexe",
+        )
+        an_nais = st.number_input(
+            "Birth year (an_nais)",
+            value=DEFAULTS["an_nais"],
+            min_value=1920,
+            max_value=2010,
+            key=f"{KEY_PREFIX}an_nais",
+        )
+        catv = st.number_input(
+            "Vehicle category (catv)",
+            value=DEFAULTS["catv"],
+            min_value=0,
+            max_value=20,
+            key=f"{KEY_PREFIX}catv",
+        )
     with c4:
-        vma = st.number_input("Speed limit (vma)", value=DEFAULTS["vma"], min_value=0, max_value=150, key=f"{KEY_PREFIX}vma")
-        nb_victim = st.number_input("Nb victims", value=DEFAULTS["nb_victim"], min_value=0, key=f"{KEY_PREFIX}nb_victim")
-        nb_vehicules = st.number_input("Nb vehicles", value=DEFAULTS["nb_vehicules"], min_value=0, key=f"{KEY_PREFIX}nb_vehicules")
-        catr = st.number_input("Road category (catr)", value=DEFAULTS["catr"], min_value=1, max_value=9, key=f"{KEY_PREFIX}catr")
-        circ = st.number_input("Traffic (circ)", value=DEFAULTS["circ"], min_value=1, max_value=4, key=f"{KEY_PREFIX}circ")
+        vma = st.number_input(
+            "Speed limit (vma)",
+            value=DEFAULTS["vma"],
+            min_value=0,
+            max_value=150,
+            key=f"{KEY_PREFIX}vma",
+        )
+        nb_victim = st.number_input(
+            "Nb victims",
+            value=DEFAULTS["nb_victim"],
+            min_value=0,
+            key=f"{KEY_PREFIX}nb_victim",
+        )
+        nb_vehicules = st.number_input(
+            "Nb vehicles",
+            value=DEFAULTS["nb_vehicules"],
+            min_value=0,
+            key=f"{KEY_PREFIX}nb_vehicules",
+        )
+        catr = st.number_input(
+            "Road category (catr)",
+            value=DEFAULTS["catr"],
+            min_value=1,
+            max_value=9,
+            key=f"{KEY_PREFIX}catr",
+        )
+        circ = st.number_input(
+            "Traffic (circ)",
+            value=DEFAULTS["circ"],
+            min_value=1,
+            max_value=4,
+            key=f"{KEY_PREFIX}circ",
+        )
     hrmn = hrmn_str if (":" in hrmn_str and len(hrmn_str) <= 5) else "17:00"
     return {
         "place": place,

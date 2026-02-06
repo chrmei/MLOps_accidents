@@ -10,13 +10,13 @@ import pandera as pa
 
 try:
     from .check_structure import check_existing_file, check_existing_folder
-    from .data_schemas import UserSchema, CharactSchema, VehicleSchema, PlaceSchema
+    from .data_schemas import CharactSchema, PlaceSchema, UserSchema, VehicleSchema
 except ImportError:
     from check_structure import (  # type: ignore[import-not-found,no-redef]
         check_existing_file,
         check_existing_folder,
     )
-    from data_schemas import UserSchema, CharactSchema, VehicleSchema, PlaceSchema
+    from data_schemas import CharactSchema, PlaceSchema, UserSchema, VehicleSchema
 
 # Note: train_test_split moved to model training pipeline
 # Interim dataset is saved instead of train/test split
@@ -57,7 +57,11 @@ def discover_raw_file_paths(raw_dir: str):
     except OSError as e:
         raise FileNotFoundError(f"Cannot list raw data directory {raw_dir}: {e}") from e
 
-    csv_files = [f for f in entries if os.path.isfile(os.path.join(raw_dir, f)) and f.lower().endswith(".csv")]
+    csv_files = [
+        f
+        for f in entries
+        if os.path.isfile(os.path.join(raw_dir, f)) and f.lower().endswith(".csv")
+    ]
     paths = {}
 
     for key, pattern in RAW_FILE_PATTERNS.items():
@@ -111,9 +115,12 @@ def main(input_filepath, output_filepath):
         logger.info("Please run 'make run-import' first to download raw data")
         raise click.Abort()
 
-    input_filepath_users, input_filepath_caract, input_filepath_places, input_filepath_veh = (
-        discover_raw_file_paths(input_filepath)
-    )
+    (
+        input_filepath_users,
+        input_filepath_caract,
+        input_filepath_places,
+        input_filepath_veh,
+    ) = discover_raw_file_paths(input_filepath)
     logger.info(
         "Discovered raw files: usagers=%s, caract=%s, lieux=%s, vehicules=%s",
         input_filepath_users,
@@ -140,6 +147,7 @@ def main(input_filepath, output_filepath):
         output_filepath,
     )
 
+
 def validate_df(df_model, df):
     logger = logging.getLogger(__name__)
     schema = df_model.to_schema()
@@ -148,7 +156,7 @@ def validate_df(df_model, df):
         logger.info(f"{schema.name} validation passed")
         return val_df
     except pa.errors.SchemaErrors as err:
-        logger.error(f"{schema.name} validation failed") 
+        logger.error(f"{schema.name} validation failed")
         logger.error(f"\n{err.failure_cases}")
         return None
 
@@ -176,9 +184,9 @@ def process_data(
     df_caract = validate_df(CharactSchema, df_caract)
     df_places = validate_df(PlaceSchema, df_places)
     df_veh = validate_df(VehicleSchema, df_veh)
-    
+
     if any(df is None for df in (df_users, df_caract, df_places, df_veh)):
-        raise ValueError(f"Validation failed for at least one data schema")
+        raise ValueError("Validation failed for at least one data schema")
     else:
         logger.info("All schema validations passed")
 
