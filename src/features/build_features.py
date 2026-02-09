@@ -11,7 +11,7 @@ ready for XGBoost model training, including:
 import logging
 import os
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Dict, Optional, Union, List, Any
 
 import click
 import joblib
@@ -641,7 +641,7 @@ def ensure_numeric_features(df):
 
 
 def prepare_input_for_feature_engineering(
-    features: Dict, default_values: Optional[Dict] = None
+    features: Union[Dict[str, Any], List[Dict[str, Any]]], default_values: Optional[Dict] = None
 ) -> pd.DataFrame:
     """
     Prepare input features dictionary for feature engineering pipeline.
@@ -666,7 +666,7 @@ def prepare_input_for_feature_engineering(
     pd.DataFrame
         DataFrame in interim dataset format ready for build_features
     """
-    df = pd.DataFrame([features])
+    df = pd.DataFrame([features] if isinstance(features, dict) else features)
     
     # Standard default values for interim dataset columns (from canonical schema)
     if default_values is None:

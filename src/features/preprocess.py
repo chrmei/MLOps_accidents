@@ -6,8 +6,7 @@ This module provides reusable preprocessing functions for inference,
 ensuring consistency with the training pipeline.
 """
 import logging
-from typing import Dict, Optional, Any
-
+from typing import Dict, Optional, Any, List, Union
 import pandas as pd
 
 from .build_features import build_features, prepare_input_for_feature_engineering
@@ -16,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 
 def preprocess_for_inference(
-    features: Dict,
+    features: Union[Dict[str, Any], List[Dict[str, Any]]],
     label_encoders: Optional[Dict] = None,
     apply_cyclic_encoding: Optional[bool] = None,
     apply_interactions: Optional[bool] = None,

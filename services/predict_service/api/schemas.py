@@ -5,9 +5,10 @@ Predict service always uses the best Production model from MLflow,
 loaded once at container startup. No per-request model selection.
 """
 
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel
+from services.common.models import ModelMetrics
 
 
 class PredictionRequest(BaseModel):
@@ -36,4 +37,17 @@ class BatchPredictionResponse(BaseModel):
     predictions: List[Any]
     probabilities: List[float]
     count: int
+    model_type: str
+
+class EvaluationRequest(BaseModel):
+    """Request payload for model evaluation."""
+
+    eval_data: List[Dict[str, Any]]
+    ref_data: Optional[List[Dict[str, Any]]]=None
+
+class EvaluationResponse(BaseModel):
+    """Response payload for model evaluation."""
+    
+    metrics: ModelMetrics
+    data_drift: bool
     model_type: str
