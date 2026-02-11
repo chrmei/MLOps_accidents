@@ -1,0 +1,113 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: data
+  namespace: mlops
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: data
+  template:
+    metadata:
+      labels:
+        app: data
+    spec:
+      containers:
+      - name: data
+        image: mlops-accidents:data_service
+        imagePullPolicy: Never
+        env:
+        - name: SERVICE_NAME
+          value: "data-service"
+        - name: LOG_LEVEL
+          valueFrom:
+            configMapKeyRef:
+              name: mlops-config
+              key: LOG_LEVEL
+        - name: DATA_DIR
+          valueFrom:
+            configMapKeyRef:
+              name: mlops-config
+              key: DATA_DIR
+        - name: MODELS_DIR
+          valueFrom:
+            configMapKeyRef:
+              name: mlops-config
+              key: MODELS_DIR
+        - name: JWT_SECRET_KEY
+          valueFrom:
+            secretKeyRef:
+              name: mlops-secrets
+              key: JWT_SECRET_KEY
+        - name: MLFLOW_TRACKING_URI
+          valueFrom:
+            secretKeyRef:
+              name: mlops-secrets
+              key: MLFLOW_TRACKING_URI
+        - name: MLFLOW_TRACKING_USERNAME
+          valueFrom:
+            secretKeyRef:
+              name: mlops-secrets
+              key: MLFLOW_TRACKING_USERNAME
+        - name: MLFLOW_TRACKING_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mlops-secrets
+              key: MLFLOW_TRACKING_PASSWORD
+        - name: DATABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: mlops-secrets
+              key: DATABASE_URL
+        - name: PYTHONUNBUFFERED
+          value: "1"
+        ports:
+        - containerPort: 8001
+        volumeMounts:
+        - name: data-volume
+          mountPath: /app/data
+        - name: models-volume
+          mountPath: /app/models
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "250m"
+          limits:
+            memory: "1Gi"
+            cpu: "1000m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8001
+          initialDelaySeconds: 30
+          periodSeconds: 30
+          timeoutSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8001
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+      volumes:
+      - name: data-volume
+        persistentVolumeClaim:
+          claimName: data-pvc
+      - name: models-volume
+        persistentVolumeClaim:
+          claimName: models-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: data
+  namespace: mlops
+spec:
+  selector:
+    app: data
+  ports:
+  - port: 8001
+    targetPort: 8001
+  type: ClusterIP

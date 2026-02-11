@@ -16,6 +16,7 @@ matplotlib.use("Agg")  # Use non-interactive backend
 import matplotlib.pyplot as plt
 import mlflow
 import mlflow.sklearn
+from mlflow.models import infer_signature
 import numpy as np
 import pandas as pd
 import seaborn as sns
@@ -326,19 +327,19 @@ def log_model_to_mlflow(
                     # Get predictions for signature inference
                     y_pred_sample = model.predict(X_test.iloc[:1])
                     signature = infer_signature(input_example, y_pred_sample)
-                    logger.info(f"MLflow signature {signature} inferred successfully")
+                    logger.info("MLflow signature inferred successfully")
                 except Exception as e:
                     logger.warning(f"Failed to infer MLflow signature: {e}")
-
+            
             # Log model with signature and input example
-            # model_info = mlflow.sklearn.log_model(
-            #    model,
-            #    name="model",
-            #    registered_model_name=registered_model_name,
-            #    signature=signature,
-            #    input_example=input_example,
-            # )
-
+            model_info = mlflow.sklearn.log_model(
+                model,
+                name="model",
+                registered_model_name=registered_model_name,
+                signature=signature,
+                input_example=input_example,
+            )
+            
             # Get the version that was just created
             try:
                 from mlflow.tracking import MlflowClient
@@ -469,6 +470,7 @@ def log_model_to_mlflow(
                 feature_names = list(X_train.columns)
 
                 # Try to extract from model if it's a pipeline
+                model_feature_count = None
                 if hasattr(model, "steps") and len(model.steps) > 0:
                     estimator = model.steps[-1][1]
                     if (
@@ -476,6 +478,52 @@ def log_model_to_mlflow(
                         and estimator.feature_names_in_ is not None
                     ):
                         feature_names = list(estimator.feature_names_in_)
+                    if (
+                        hasattr(estimator, "n_features_in_")
+                        and estimator.n_features_in_ is not None
+                    ):
+                        model_feature_count = int(estimator.n_features_in_)
+                    elif hasattr(estimator, "booster_") and estimator.booster_ is not None:
+                        booster = estimator.booster_
+                        if hasattr(booster, "num_feature"):
+                            try:
+                                model_feature_count = int(booster.num_feature())
+                            except Exception:
+                                pass
+                    elif hasattr(estimator, "_Booster") and estimator._Booster is not None:
+                        booster = estimator._Booster
+                        if hasattr(booster, "num_feature"):
+                            try:
+                                model_feature_count = int(booster.num_feature())
+                            except Exception:
+                                pass
+
+                # Reconcile feature names with estimator count when grouped features
+                # were created alongside original columns.
+                if (
+                    model_feature_count is not None
+                    and len(feature_names) != model_feature_count
+                ):
+                    grouped_pairs = [
+                        ("place", "place_group"),
+                        ("secu1", "secu_group"),
+                        ("catv", "catv_group"),
+                        ("motor", "motor_group"),
+                        ("obsm", "obsm_group"),
+                        ("obs", "obs_group"),
+                    ]
+                    reduced_features = list(feature_names)
+                    for source, grouped in grouped_pairs:
+                        if source in reduced_features and grouped in reduced_features:
+                            reduced_features.remove(source)
+
+                    if len(reduced_features) == model_feature_count:
+                        logger.warning(
+                            "Adjusting metadata feature_names from %d to %d based on model count.",
+                            len(feature_names),
+                            model_feature_count,
+                        )
+                        feature_names = reduced_features
 
                 # Detect if grouped features are used
                 grouped_features = [

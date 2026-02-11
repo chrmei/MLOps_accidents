@@ -14,6 +14,9 @@ from ..core.prom_metrics import api_requests_total, api_request_duration_seconds
 from .schemas import (
     BatchPredictionRequest,
     BatchPredictionResponse,
+    FeatureEngineeringConfig,
+    InputFeaturesResponse,
+    ModelInfoResponse,
     PredictionRequest,
     PredictionResponse,
     EvaluationRequest,
@@ -124,4 +127,97 @@ async def evaluate_model(
         metrics= ModelMetrics(**result["metrics"]),
         data_drift=result["data_drift"],
         model_type=result["model_type"],
+    )
+
+@router.get("/model-info", response_model=ModelInfoResponse)
+async def get_model_info(
+    current_user: AuthenticatedUser,
+    model_cache=Depends(get_model_cache),
+):
+    """Get detailed model information including feature engineering config."""
+    metadata = model_cache.get("metadata", {})
+    model_type = model_cache.get("model_type", "Unknown")
+    
+    # Try to get MLflow signature if model_uri is available
+    mlflow_signature_available = False
+    input_features = None
+    
+    # Check if model_uri is in cache (might be added during model loading)
+    model_uri = model_cache.get("model_uri")
+    if model_uri:
+        try:
+            from mlflow.models.model import get_model_info
+            model_info = get_model_info(model_uri)
+            if model_info.signature:
+                mlflow_signature_available = True
+                input_features = model_info.signature.inputs.input_names()
+        except Exception:
+            pass
+    
+    # Fallback to metadata if signature not available
+    if input_features is None:
+        input_features = metadata.get("input_features")
+        if input_features is None:
+            # Last resort: use canonical schema
+            from src.features.schema import get_canonical_input_features
+            input_features = get_canonical_input_features()
+    
+    # Build feature engineering config
+    fe_config = FeatureEngineeringConfig(
+        feature_engineering_version=metadata.get("feature_engineering_version"),
+        uses_grouped_features=metadata.get("uses_grouped_features", False),
+        grouped_feature_mappings=metadata.get("grouped_feature_mappings"),
+        removed_features=metadata.get("removed_features"),
+        apply_cyclic_encoding=metadata.get("apply_cyclic_encoding", True),
+        apply_interactions=metadata.get("apply_interactions", True),
+    )
+    
+    return ModelInfoResponse(
+        model_type=model_type,
+        model_version=None,  # Could be extracted from MLflow if needed
+        input_features=input_features,
+        feature_engineering_config=fe_config,
+        mlflow_signature_available=mlflow_signature_available,
+    )
+
+
+@router.get("/input-features", response_model=InputFeaturesResponse)
+async def get_input_features(
+    current_user: AuthenticatedUser,
+    model_cache=Depends(get_model_cache),
+):
+    """Get canonical input features expected by the model."""
+    metadata = model_cache.get("metadata", {})
+    
+    # Try MLflow signature first (most reliable)
+    model_uri = model_cache.get("model_uri")
+    source = "inferred"
+    input_features = None
+    
+    if model_uri:
+        try:
+            from mlflow.models.model import get_model_info
+            model_info = get_model_info(model_uri)
+            if model_info.signature:
+                input_features = model_info.signature.inputs.input_names()
+                source = "mlflow_signature"
+        except Exception:
+            pass
+    
+    # Fallback to metadata
+    if input_features is None and metadata.get("input_features"):
+        input_features = metadata["input_features"]
+        source = "metadata"
+    
+    # Last resort: use canonical schema
+    if input_features is None:
+        from src.features.schema import get_canonical_input_features
+        input_features = get_canonical_input_features()
+        source = "canonical_schema"
+    
+    return InputFeaturesResponse(
+        input_features=input_features,
+        uses_grouped_features=metadata.get("uses_grouped_features", False),
+        feature_engineering_version=metadata.get("feature_engineering_version"),
+        source=source,
     )

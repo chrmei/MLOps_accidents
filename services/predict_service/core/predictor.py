@@ -62,12 +62,25 @@ def _preprocess_and_predict_one(
         apply_cyclic_encoding=apply_cyclic_encoding,
         apply_interactions=apply_interactions,
         model_type=model_type_display,
+        metadata=metadata,
     )
     expected_features = get_expected_features(model, metadata)
     if expected_features is None:
+        logger.warning(
+            f"Could not extract expected features from model/metadata. "
+            f"Using all {len(df_features.columns)} preprocessed features. "
+            f"This may cause feature mismatch errors."
+        )
         expected_features = list(df_features.columns)
     else:
+        logger.info(
+            f"Extracted {len(expected_features)} expected features from model/metadata. "
+            f"Preprocessed features: {len(df_features.columns)}"
+        )
         df_features = align_features_with_model(df_features, expected_features)
+        logger.info(
+            f"After alignment: {len(df_features.columns)} features match model expectations"
+        )
     prediction = model.predict(df_features)
     proba: Optional[float] = None
     if hasattr(model, "predict_proba"):
