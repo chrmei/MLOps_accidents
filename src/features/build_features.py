@@ -10,8 +10,7 @@ ready for XGBoost model training, including:
 """
 import logging
 import os
-from pathlib import Path
-from typing import Dict, Optional, Union, List, Any
+from typing import Any, Dict, List, Optional, Union
 
 import click
 import joblib
@@ -294,6 +293,7 @@ def map_place_to_group(df):
     """
     df = df.copy()
     if "place" in df.columns:
+
         def map_place(x):
             if pd.isna(x):
                 return "Unknown"
@@ -329,6 +329,7 @@ def map_secu1_to_group(df):
     """
     df = df.copy()
     if "secu1" in df.columns:
+
         def map_secu(x):
             if pd.isna(x):
                 return "Other_Unknown"
@@ -365,6 +366,7 @@ def map_catv_to_group(df):
     """
     df = df.copy()
     if "catv" in df.columns:
+
         def map_catv(x):
             if pd.isna(x):
                 return "Other"
@@ -402,6 +404,7 @@ def map_motor_to_group(df):
     """
     df = df.copy()
     if "motor" in df.columns:
+
         def map_motor(x):
             if pd.isna(x):
                 return "Other_Unknown"
@@ -435,6 +438,7 @@ def map_obsm_to_group(df):
     """
     df = df.copy()
     if "obsm" in df.columns:
+
         def map_obsm(x):
             if pd.isna(x):
                 return "Unknown"
@@ -470,6 +474,7 @@ def map_obs_to_group(df):
     """
     df = df.copy()
     if "obs" in df.columns:
+
         def map_obs(x):
             if pd.isna(x):
                 return "Other_Fixed"
@@ -494,7 +499,7 @@ def map_obs_to_group(df):
 def reduce_categorical_cardinality(df):
     """
     Apply feature engineering mappings to reduce cardinality of categorical features.
-    
+
     Creates grouped versions of high-cardinality categorical features:
     - place -> place_group
     - secu1 -> secu_group
@@ -502,7 +507,7 @@ def reduce_categorical_cardinality(df):
     - motor -> motor_group
     - obsm -> obsm_group
     - obs -> obs_group
-    
+
     These grouped features can then be label encoded, reducing the number of
     unique categories and improving model performance.
 
@@ -518,14 +523,14 @@ def reduce_categorical_cardinality(df):
     """
     df = df.copy()
     logger.info("Reducing categorical cardinality by grouping similar categories...")
-    
+
     df = map_place_to_group(df)
     df = map_secu1_to_group(df)
     df = map_catv_to_group(df)
     df = map_motor_to_group(df)
     df = map_obsm_to_group(df)
     df = map_obs_to_group(df)
-    
+
     return df
 
 
@@ -641,46 +646,47 @@ def ensure_numeric_features(df):
 
 
 def prepare_input_for_feature_engineering(
-    features: Union[Dict[str, Any], List[Dict[str, Any]]], default_values: Optional[Dict] = None
+    features: Union[Dict[str, Any], List[Dict[str, Any]]],
+    default_values: Optional[Dict] = None,
 ) -> pd.DataFrame:
     """
     Prepare input features dictionary for feature engineering pipeline.
-    
+
     Converts user-friendly input format to interim dataset format expected
     by build_features. Handles common input variations (e.g., year_acc vs an,
     hour vs hrmn).
-    
+
     This function is used for inference when input comes as a dictionary
     instead of a DataFrame. It ensures the input is in the correct format
     for the feature engineering pipeline.
-    
+
     Parameters
     ----------
     features : dict
         Input features dictionary (can be in simplified or interim format)
     default_values : dict, optional
         Default values for missing columns. If None, uses standard defaults.
-        
+
     Returns
     -------
     pd.DataFrame
         DataFrame in interim dataset format ready for build_features
     """
     df = pd.DataFrame([features] if isinstance(features, dict) else features)
-    
+
     # Standard default values for interim dataset columns (from canonical schema)
     if default_values is None:
         default_values = get_canonical_input_defaults()
-    
+
     # Convert year_acc to an if needed (an is used for datetime creation)
     if "year_acc" in df.columns and "an" not in df.columns:
         df["an"] = df["year_acc"]
-    
+
     # Ensure hrmn is in HH:MM format if hour is provided instead
     if "hour" in df.columns and "hrmn" not in df.columns:
         hour = int(df["hour"].iloc[0])
         df["hrmn"] = f"{hour:02d}:00"
-    
+
     # Ensure jour, mois, an are present for datetime creation
     if "jour" not in df.columns:
         df["jour"] = 1
@@ -688,7 +694,7 @@ def prepare_input_for_feature_engineering(
         df["mois"] = 1
     if "an" not in df.columns and "year_acc" in df.columns:
         df["an"] = df["year_acc"]
-    
+
     # Calculate an_nais from victim_age if victim_age is provided but an_nais is not
     if "victim_age" in df.columns and "an_nais" not in df.columns:
         if "year_acc" in df.columns:
@@ -699,21 +705,25 @@ def prepare_input_for_feature_engineering(
             df["an_nais"] = 1900
     elif "an_nais" not in df.columns:
         df["an_nais"] = 1900
-    
+
     # Remove victim_age if present (it will be recalculated by build_features)
     if "victim_age" in df.columns:
         df = df.drop(columns=["victim_age"])
-    
+
     # Add missing columns with default values
     for col, default_val in default_values.items():
         if col not in df.columns:
             df[col] = default_val
-    
+
     return df
 
 
 def build_features(
-    df_interim, apply_cyclic_encoding=True, apply_interactions=True, label_encoders=None, model_type=None
+    df_interim,
+    apply_cyclic_encoding=True,
+    apply_interactions=True,
+    label_encoders=None,
+    model_type=None,
 ):
     """
     Main function to build all features from interim dataset for XGBoost.
