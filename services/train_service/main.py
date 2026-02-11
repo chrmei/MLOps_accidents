@@ -23,6 +23,7 @@ async def startup_ensure_config():
     """Copy default model config on first run if active path does not exist."""
     ensure_config_exists(settings.MODEL_CONFIG_PATH)
 
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.CORS_ORIGINS,

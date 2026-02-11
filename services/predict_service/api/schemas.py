@@ -8,6 +8,7 @@ loaded once at container startup. No per-request model selection.
 from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel
+from services.common.models import ModelMetrics
 
 
 class PredictionRequest(BaseModel):
@@ -38,6 +39,18 @@ class BatchPredictionResponse(BaseModel):
     count: int
     model_type: str
 
+class EvaluationRequest(BaseModel):
+    """Request payload for model evaluation."""
+
+    eval_data: List[Dict[str, Any]]
+    ref_data: Optional[List[Dict[str, Any]]]=None
+
+class EvaluationResponse(BaseModel):
+    """Response payload for model evaluation."""
+    
+    metrics: ModelMetrics
+    data_drift: bool
+    model_type: str
 
 class FeatureEngineeringConfig(BaseModel):
     """Feature engineering configuration."""

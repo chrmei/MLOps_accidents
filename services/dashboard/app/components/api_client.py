@@ -1,4 +1,5 @@
 """JWT-aware HTTP client for backend API."""
+
 from __future__ import annotations
 
 import logging
@@ -6,6 +7,7 @@ from datetime import datetime
 
 import streamlit as st
 import httpx
+import streamlit as st
 
 from ..auth import TOKEN_KEY, get_api_base
 

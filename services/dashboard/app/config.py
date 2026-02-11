@@ -1,4 +1,5 @@
 """Dashboard configuration."""
+
 import os
 
 # Internal API base URL (for server-side API calls - uses Docker service name)

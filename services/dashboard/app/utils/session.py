@@ -1,4 +1,5 @@
 """Session state and expiry for dashboard."""
+
 import streamlit as st
 
 from ..auth import (
@@ -8,6 +9,7 @@ from ..auth import (
     fetch_me,
     session_expired,
 )
+
 
 def clear_session():
     """Clear auth-related session state (logout)."""

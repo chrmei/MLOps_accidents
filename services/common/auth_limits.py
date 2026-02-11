@@ -76,7 +76,9 @@ def _prune_rate_windows(identifier: str, key_prefix: str, window_seconds: int) -
 # Lockout: failed login count and locked_until per username
 # -----------------------------------------------------------------------------
 
-_lockout_store: dict[str, Tuple[int, datetime | None]] = {}  # username -> (failed_count, locked_until)
+_lockout_store: dict[str, Tuple[int, datetime | None]] = (
+    {}
+)  # username -> (failed_count, locked_until)
 
 
 def check_lockout(username: str) -> Tuple[bool, float | None]:

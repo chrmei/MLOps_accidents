@@ -171,4 +171,3 @@ async def verify_service_health() -> Dict[str, str]:
 
 
 HealthStatus = Annotated[Dict[str, str], Depends(verify_service_health)]
-

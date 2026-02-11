@@ -9,7 +9,17 @@ import logging
 from contextlib import contextmanager
 from typing import Generator
 
-from sqlalchemy import JSON, Column, DateTime, Float, Integer, String, Text, create_engine, text
+from sqlalchemy import (
+    JSON,
+    Column,
+    DateTime,
+    Float,
+    Integer,
+    String,
+    Text,
+    create_engine,
+    text,
+)
 from sqlalchemy.orm import Session, declarative_base, sessionmaker
 from sqlalchemy.sql import func
 

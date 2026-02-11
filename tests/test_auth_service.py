@@ -22,9 +22,7 @@ class TestAuthService:
     # =========================================================================
 
     @pytest.mark.asyncio
-    async def test_health_check(
-        self, http_client: AsyncClient, auth_health_url: str
-    ):
+    async def test_health_check(self, http_client: AsyncClient, auth_health_url: str):
         """Test health check endpoint."""
         response = await http_client.get(auth_health_url)
         assert response.status_code == 200
@@ -211,7 +209,9 @@ class TestAuthService:
         assert response.status_code in (403, 429)
         data = response.json()
         assert "detail" in data
-        assert "locked" in data["detail"].lower() or "too many" in data["detail"].lower()
+        assert (
+            "locked" in data["detail"].lower() or "too many" in data["detail"].lower()
+        )
         # Teardown: remove the lockout test user
         list_resp = await http_client.get(
             f"{auth_base_url}/users",
@@ -428,6 +428,7 @@ class TestAuthService:
     ):
         """Test creating a new user as admin."""
         import uuid
+
         # Use unique username to avoid conflicts from previous test runs
         unique_id = str(uuid.uuid4())[:8]
         user_data = {
@@ -443,7 +444,10 @@ class TestAuthService:
             headers=admin_headers,
         )
         # Accept both 200 (created) and 201 (created) as success
-        assert response.status_code in (200, 201), f"Expected 200/201, got {response.status_code}: {response.text}"
+        assert response.status_code in (
+            200,
+            201,
+        ), f"Expected 200/201, got {response.status_code}: {response.text}"
         data = response.json()
         assert data["username"] == user_data["username"]
         assert data["email"] == user_data["email"]
@@ -567,7 +571,10 @@ class TestAuthService:
             json={"token": "invalid-token", "new_password": "NewSecure@123"},
         )
         assert response.status_code == 400
-        assert "invalid" in response.json().get("detail", "").lower() or "expired" in response.json().get("detail", "").lower()
+        assert (
+            "invalid" in response.json().get("detail", "").lower()
+            or "expired" in response.json().get("detail", "").lower()
+        )
 
     @pytest.mark.asyncio
     async def test_forgot_and_reset_password_flow(
@@ -594,12 +601,19 @@ class TestAuthService:
         # Login with new password
         r3 = await http_client.post(
             f"{auth_base_url}/login",
-            json={"username": admin_credentials["username"], "password": "NewSecure@123"},
+            json={
+                "username": admin_credentials["username"],
+                "password": "NewSecure@123",
+            },
         )
         assert r3.status_code == 200
         # Restore original password for other tests (optional)
-        from services.common.auth import create_password_reset_token, update_user_password
+        from services.common.auth import (
+            create_password_reset_token,
+            update_user_password,
+        )
         from services.common.config import settings
+
         tok2 = create_password_reset_token(admin_credentials["username"])
         if tok2:
             update_user_password(admin_credentials["username"], settings.ADMIN_PASSWORD)
@@ -618,7 +632,10 @@ class TestAuthService:
         response = await http_client.post(
             f"{auth_base_url}/login",
             content=large_body,
-            headers={"Content-Type": "application/json", "Content-Length": str(len(large_body))},
+            headers={
+                "Content-Type": "application/json",
+                "Content-Length": str(len(large_body)),
+            },
         )
         # 413 from auth service; 502/503 from nginx when overloaded or body too large
         assert response.status_code in (413, 404, 502, 503)

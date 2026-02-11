@@ -1,7 +1,9 @@
 """Admin User Management: list, add, delete users."""
+
 import streamlit as st
 
-from ..components.api_client import delete as api_delete, get, post
+from ..components.api_client import delete as api_delete
+from ..components.api_client import get, post
 
 
 def _format_api_error(detail) -> str:
@@ -48,7 +50,9 @@ def render():
         for u in users:
             col1, col2, col3 = st.columns([2, 1, 1])
             with col1:
-                st.markdown(f"**{u.get('username', '')}** | {u.get('role', '')} | {u.get('email', '')}")
+                st.markdown(
+                    f"**{u.get('username', '')}** | {u.get('role', '')} | {u.get('email', '')}"
+                )
             with col3:
                 uid = u.get("id")
                 if uid and st.button("Delete", key=f"del_{uid}"):
@@ -58,7 +62,9 @@ def render():
                         st.rerun()
                     elif r:
                         try:
-                            st.error(_format_api_error(r.json().get("detail", "Failed")))
+                            st.error(
+                                _format_api_error(r.json().get("detail", "Failed"))
+                            )
                         except Exception:
                             st.error("Failed")
 
@@ -66,7 +72,9 @@ def render():
     st.subheader("Add user")
     with st.form("add_user"):
         username = st.text_input("Username")
-        password = st.text_input("Password", type="password", autocomplete="new-password")
+        password = st.text_input(
+            "Password", type="password", autocomplete="new-password"
+        )
         email = st.text_input("Email (optional)")
         full_name = st.text_input("Full name (optional)")
         role = st.selectbox("Role", ["user", "admin"])
