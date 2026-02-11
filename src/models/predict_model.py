@@ -786,23 +786,138 @@ def get_expected_features(model, metadata=None):
     list
         List of expected feature names
     """
-    # Try metadata first (ensure it's a dictionary)
+    metadata_features = None
     if metadata and isinstance(metadata, dict) and "feature_names" in metadata:
-        return metadata["feature_names"]
+        metadata_features = list(metadata["feature_names"])
 
-    # Try to extract from model
+    estimator = None
     if hasattr(model, "steps") and len(model.steps) > 0:
-        xgb_model = model.steps[-1][1]
-        if (
-            hasattr(xgb_model, "feature_names_in_")
-            and xgb_model.feature_names_in_ is not None
-        ):
-            return list(xgb_model.feature_names_in_)
-        elif hasattr(xgb_model, "get_booster"):
-            booster = xgb_model.get_booster()
-            if hasattr(booster, "feature_names"):
-                return booster.feature_names
+        estimator = model.steps[-1][1]
 
+    # 1) Get model-expected feature count from estimator internals
+    model_feature_count = None
+    if estimator is not None:
+        if hasattr(estimator, "n_features_in_") and estimator.n_features_in_ is not None:
+            model_feature_count = int(estimator.n_features_in_)
+        elif hasattr(estimator, "booster_") and estimator.booster_ is not None:
+            booster = estimator.booster_
+            if hasattr(booster, "num_feature"):
+                try:
+                    model_feature_count = int(booster.num_feature())
+                except Exception as e:
+                    logger.debug("Failed to read LightGBM booster_ feature count: %s", e)
+        elif hasattr(estimator, "_Booster") and estimator._Booster is not None:
+            booster = estimator._Booster
+            if hasattr(booster, "num_feature"):
+                try:
+                    model_feature_count = int(booster.num_feature())
+                except Exception as e:
+                    logger.debug("Failed to read LightGBM _Booster feature count: %s", e)
+
+    # 2) Try metadata first only if it matches model feature count
+    if metadata_features is not None:
+        if model_feature_count is None or len(metadata_features) == model_feature_count:
+            logger.debug(
+                "Extracted %d features from metadata (model count=%s)",
+                len(metadata_features),
+                model_feature_count,
+            )
+            return metadata_features
+
+        # Backward-compat fallback:
+        # Some grouped-feature metadata may include both source and grouped columns
+        # while the model was trained after dropping source columns.
+        grouped_pairs = [
+            ("place", "place_group"),
+            ("secu1", "secu_group"),
+            ("catv", "catv_group"),
+            ("motor", "motor_group"),
+            ("obsm", "obsm_group"),
+            ("obs", "obs_group"),
+        ]
+        reduced_features = list(metadata_features)
+        for source, grouped in grouped_pairs:
+            if source in reduced_features and grouped in reduced_features:
+                reduced_features.remove(source)
+
+        if len(reduced_features) == model_feature_count:
+            logger.warning(
+                "Metadata feature count (%d) mismatches model count (%d); "
+                "using grouped-feature reduced metadata (%d features).",
+                len(metadata_features),
+                model_feature_count,
+                len(reduced_features),
+            )
+            return reduced_features
+
+        logger.warning(
+            "Metadata feature count (%d) mismatches model count (%d); "
+            "trying estimator-derived feature names.",
+            len(metadata_features),
+            model_feature_count,
+        )
+
+    # 3) Try to extract names from model estimator
+    if estimator is not None:
+        # sklearn-style feature names
+        if (
+            hasattr(estimator, "feature_names_in_")
+            and estimator.feature_names_in_ is not None
+        ):
+            feature_names = list(estimator.feature_names_in_)
+            logger.debug(
+                "Extracted %d features from estimator.feature_names_in_",
+                len(feature_names),
+            )
+            return feature_names
+
+        # XGBoost booster
+        if hasattr(estimator, "get_booster"):
+            booster = estimator.get_booster()
+            if hasattr(booster, "feature_names"):
+                feature_names = booster.feature_names
+                logger.debug(
+                    "Extracted %d features from XGBoost booster",
+                    len(feature_names),
+                )
+                return feature_names
+
+        # LightGBM booster_ attribute
+        if hasattr(estimator, "booster_") and estimator.booster_ is not None:
+            booster = estimator.booster_
+            if hasattr(booster, "feature_name"):
+                try:
+                    feature_names = list(booster.feature_name())
+                    logger.debug(
+                        "Extracted %d features from LightGBM booster_",
+                        len(feature_names),
+                    )
+                    return feature_names
+                except Exception as e:
+                    logger.debug("Failed to extract features from LightGBM booster_: %s", e)
+
+        # LightGBM _Booster attribute (alternative access)
+        if hasattr(estimator, "_Booster") and estimator._Booster is not None:
+            booster = estimator._Booster
+            if hasattr(booster, "feature_name"):
+                try:
+                    feature_names = list(booster.feature_name())
+                    logger.debug(
+                        "Extracted %d features from LightGBM _Booster",
+                        len(feature_names),
+                    )
+                    return feature_names
+                except Exception as e:
+                    logger.debug("Failed to extract features from LightGBM _Booster: %s", e)
+
+    # 4) Final fallback to metadata (even if mismatched) to preserve previous behavior
+    if metadata_features is not None:
+        logger.warning(
+            "Using metadata features as final fallback despite count mismatch."
+        )
+        return metadata_features
+
+    logger.warning("Could not extract feature names from model or metadata")
     return None
 
 

@@ -120,11 +120,18 @@ def align_features_with_model(
 
     extra_features = set(df_features.columns) - set(expected_features)
     if extra_features:
-        logger.warning(
-            f"Extra features ({len(extra_features)}) will be dropped: {list(extra_features)[:10]}..."
+        logger.info(
+            f"Dropping {len(extra_features)} extra features: {list(extra_features)[:10]}..."
         )
 
     # Reorder and select only expected features
+    # reindex will select only the columns in expected_features, dropping extras
     df_features = df_features.reindex(columns=expected_features, fill_value=fill_value)
+    
+    # Double-check: ensure we only have expected features
+    assert set(df_features.columns) == set(expected_features), (
+        f"Feature alignment failed: got {len(df_features.columns)} features, "
+        f"expected {len(expected_features)}"
+    )
 
     return df_features
