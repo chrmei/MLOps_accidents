@@ -16,6 +16,7 @@ matplotlib.use("Agg")  # Use non-interactive backend
 import matplotlib.pyplot as plt
 import mlflow
 import mlflow.sklearn
+from mlflow.models import infer_signature
 import numpy as np
 import pandas as pd
 import seaborn as sns
@@ -326,19 +327,19 @@ def log_model_to_mlflow(
                     # Get predictions for signature inference
                     y_pred_sample = model.predict(X_test.iloc[:1])
                     signature = infer_signature(input_example, y_pred_sample)
-                    logger.info(f"MLflow signature {signature} inferred successfully")
+                    logger.info("MLflow signature inferred successfully")
                 except Exception as e:
                     logger.warning(f"Failed to infer MLflow signature: {e}")
-
+            
             # Log model with signature and input example
-            # model_info = mlflow.sklearn.log_model(
-            #    model,
-            #    name="model",
-            #    registered_model_name=registered_model_name,
-            #    signature=signature,
-            #    input_example=input_example,
-            # )
-
+            model_info = mlflow.sklearn.log_model(
+                model,
+                name="model",
+                registered_model_name=registered_model_name,
+                signature=signature,
+                input_example=input_example,
+            )
+            
             # Get the version that was just created
             try:
                 from mlflow.tracking import MlflowClient

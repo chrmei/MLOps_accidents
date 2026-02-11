@@ -1,4 +1,4 @@
-.PHONY: help install install-dev sync lock update clean lint format type-check test test-cov test-api test-api-cov test-api-service test-api-service-cov test-api-auth test-api-data test-api-train test-api-predict run-import run-preprocess run-features run-train run-train-grid run-predict run-predict-file workflow-all workflow-data workflow-ml dvc-init dvc-setup-remote dvc-status dvc-push dvc-pull dvc-repro docker-up docker-down docker-build-services docker-logs docker-status docker-health docker-restart docker-dev docker-build docker-build-dev docker-build-train docker-dvc-pull docker-clean docker-test docker-test-build docker-test-run docker-test-cov docker-test-service
+.PHONY: help install install-dev sync lock update clean lint format type-check test test-cov test-api test-api-cov test-api-service test-api-service-cov test-api-auth test-api-data test-api-train test-api-predict run-import run-preprocess run-features run-train run-train-grid run-predict run-predict-file workflow-all workflow-data workflow-ml dvc-init dvc-setup-remote dvc-status dvc-push dvc-pull dvc-repro docker-up docker-down docker-build-services docker-logs docker-status docker-health docker-restart docker-dev docker-build docker-build-dev docker-build-train docker-dvc-pull docker-clean docker-test docker-test-build docker-test-run docker-test-cov docker-test-service k3s-create-secrets k3s-build-images k3s-build-test-image k3s-import-images k3s-import-test-image k3s-deploy k3s-deploy-predict-only k3s-destroy k3s-shutdown k3s-status k3s-scale-predict k3s-restart k3s-reload-model k3s-logs-predict k3s-logs k3s-get-node-ip k3s-test k3s-test-run k3s-test-cov k3s-test-service k3s-test-logs k3s-test-clean
 
 # Load .env file if it exists (cross-platform with GNU Make)
 # Note: On Windows, use Git Bash, WSL, or another Unix-like environment
@@ -417,3 +417,382 @@ docker-clean: ## Remove all Docker containers, images, and volumes
 	@echo "Removing legacy images..."
 	docker rmi mlops-accidents:dev mlops-accidents:train 2>/dev/null || true
 	@echo "Cleanup complete!"
+
+# =============================================================================
+# k3s Deployment Commands
+# =============================================================================
+
+K3S_DIR := deploy/k3s
+K3S_NAMESPACE := mlops
+
+k3s-check: ## Check if k3s is running and kubectl is configured
+	@echo "Checking k3s status..."
+	@kubectl cluster-info >/dev/null 2>&1 || \
+		(echo "❌ Error: k3s is not running or kubectl is not configured." && \
+		 echo "   Start k3s with: sudo systemctl start k3s" && \
+		 echo "   Configure kubectl with: mkdir -p ~/.kube && sudo cp /etc/rancher/k3s/k3s.yaml ~/.kube/config && sudo chown $$USER ~/.kube/config" && \
+		 exit 1)
+	@echo "✅ k3s is running and kubectl is configured"
+
+k3s-create-secrets: k3s-check ## Create/update Secret from .env file (requires .env with secrets)
+	@if [ ! -f .env ]; then \
+		echo "Error: .env file not found. Please create .env file with required secrets."; \
+		exit 1; \
+	fi
+	@echo "Ensuring namespace exists..."
+	@kubectl apply -f $(K3S_DIR)/00-namespace.yaml
+	@echo "Creating/updating Secret from .env..."
+	@kubectl create secret generic mlops-secrets \
+		--from-env-file=.env \
+		-n $(K3S_NAMESPACE) \
+		--dry-run=client -o yaml | kubectl apply -f -
+	@echo "Secret created/updated successfully!"
+
+k3s-build-images: ## Build all Docker images for k3s deployment
+	@echo "Building Docker images for k3s..."
+	docker compose build nginx auth data train predict geocode weather docs streamlit
+	@echo "All images built successfully!"
+
+k3s-build-test-image: ## Build test service Docker image for k3s
+	@echo "Building test service image..."
+	docker compose build test
+	@echo "Test service image built successfully!"
+
+k3s-import-images: k3s-check ## Import built images into k3s (local strategy, no registry)
+	@echo "Importing images into k3s..."
+	@echo "Tagging images for k3s..."
+	@docker tag mlops_accidents-nginx:latest mlops-accidents:nginx 2>/dev/null || true
+	@docker tag mlops_accidents-auth:latest mlops-accidents:auth_service 2>/dev/null || true
+	@docker tag mlops_accidents-data:latest mlops-accidents:data_service 2>/dev/null || true
+	@docker tag mlops_accidents-train:latest mlops-accidents:train_service 2>/dev/null || true
+	@docker tag mlops_accidents-predict:latest mlops-accidents:predict_service 2>/dev/null || true
+	@docker tag mlops_accidents-geocode:latest mlops-accidents:geocode_service 2>/dev/null || true
+	@docker tag mlops_accidents-weather:latest mlops-accidents:weather_service 2>/dev/null || true
+	@docker tag mlops_accidents-docs:latest mlops-accidents:docs_service 2>/dev/null || true
+	@docker tag mlops_accidents-streamlit:latest mlops-accidents:dashboard 2>/dev/null || true
+	@echo "Saving and importing images..."
+	@docker save mlops-accidents:nginx mlops-accidents:auth_service mlops-accidents:data_service \
+		mlops-accidents:train_service mlops-accidents:predict_service \
+		mlops-accidents:geocode_service mlops-accidents:weather_service \
+		mlops-accidents:docs_service mlops-accidents:dashboard 2>/dev/null | sudo k3s ctr images import - || \
+		(echo "Error: Failed to import images. Ensure images are built and k3s is running." && exit 1)
+	@echo "Images imported successfully!"
+
+k3s-import-test-image: k3s-check ## Import test service image into k3s
+	@echo "Importing test service image into k3s..."
+	@echo "Tagging test image for k3s..."
+	@docker tag mlops_accidents-test:latest mlops-accidents:test_service 2>/dev/null || \
+		(echo "Error: Test image not found. Build it first with 'make k3s-build-test-image'" && exit 1)
+	@echo "Saving and importing test image..."
+	@docker save mlops-accidents:test_service 2>/dev/null | sudo k3s ctr images import - || \
+		(echo "Error: Failed to import test image. Ensure image is built and k3s is running." && exit 1)
+	@echo "Test image imported successfully!"
+
+k3s-deploy: k3s-check ## Deploy all services to k3s (namespace, configmap, PVCs, services)
+	@echo "Deploying to k3s..."
+	@kubectl apply -f $(K3S_DIR)/00-namespace.yaml
+	@kubectl apply -f $(K3S_DIR)/01-configmap.yaml
+	@echo "⚠️  SECURITY: Ensure secrets are created with 'make k3s-create-secrets' before deploying services!"
+	@echo "   (This reads from .env file, which is gitignored and never committed)"
+	@kubectl apply -f $(K3S_DIR)/03-pvc.yaml
+	@kubectl apply -f $(K3S_DIR)/05-postgres.yaml
+	@kubectl apply -f $(K3S_DIR)/10-auth.yaml
+	@kubectl apply -f $(K3S_DIR)/10-data.yaml
+	@kubectl apply -f $(K3S_DIR)/10-train.yaml
+	@kubectl apply -f $(K3S_DIR)/10-predict.yaml
+	@kubectl apply -f $(K3S_DIR)/10-geocode.yaml
+	@kubectl apply -f $(K3S_DIR)/10-weather.yaml
+	@kubectl apply -f $(K3S_DIR)/10-docs.yaml
+	@kubectl apply -f $(K3S_DIR)/10-dashboard.yaml
+	@kubectl apply -f $(K3S_DIR)/20-nginx.yaml
+	@echo "Deployment completed! Access API at http://<node-ip>:30080"
+	@echo "Optional: Apply HPA with 'kubectl apply -f $(K3S_DIR)/25-hpa-predict.yaml'"
+
+k3s-deploy-predict-only: ## Deploy only predict service and nginx (when other services exist)
+	@echo "Deploying predict service and nginx..."
+	@kubectl apply -f $(K3S_DIR)/10-predict.yaml
+	@kubectl apply -f $(K3S_DIR)/20-nginx.yaml
+	@echo "Predict service and nginx deployed!"
+
+k3s-destroy: ## Delete all k3s resources (namespace deletion removes everything)
+	@echo "Destroying k3s deployment..."
+	@kubectl delete namespace $(K3S_NAMESPACE) || echo "Namespace already deleted or doesn't exist"
+	@echo "k3s deployment destroyed!"
+
+k3s-shutdown: ## Safely shut down workloads without losing data (keeps namespace, PVCs, secrets)
+	@echo "Shutting down k3s workloads (data preserved)..."
+	@kubectl delete deployment --all -n $(K3S_NAMESPACE) --ignore-not-found=true
+	@kubectl delete job --all -n $(K3S_NAMESPACE) --ignore-not-found=true
+	@kubectl delete cronjob --all -n $(K3S_NAMESPACE) --ignore-not-found=true
+	@kubectl delete service --all -n $(K3S_NAMESPACE) --ignore-not-found=true
+	@kubectl delete configmap --all -n $(K3S_NAMESPACE) --ignore-not-found=true
+	@kubectl delete hpa --all -n $(K3S_NAMESPACE) --ignore-not-found=true
+	@echo "✅ Workloads stopped. Namespace, PVCs (data), and secrets are unchanged."
+	@echo "   Restart with: make k3s-deploy"
+
+k3s-status: ## Show status of all pods, services, and PVCs
+	@echo "=== Pods ==="
+	@kubectl get pods -n $(K3S_NAMESPACE)
+	@echo ""
+	@echo "=== Services ==="
+	@kubectl get svc -n $(K3S_NAMESPACE)
+	@echo ""
+	@echo "=== PVCs ==="
+	@kubectl get pvc -n $(K3S_NAMESPACE)
+
+k3s-scale-predict: ## Scale predict deployment (usage: make k3s-scale-predict REPLICAS=3)
+	@if [ -z "$(REPLICAS)" ]; then \
+		echo "Error: REPLICAS variable required. Usage: make k3s-scale-predict REPLICAS=3"; \
+		exit 1; \
+	fi
+	@echo "Scaling predict deployment to $(REPLICAS) replicas..."
+	@kubectl scale deployment predict -n $(K3S_NAMESPACE) --replicas=$(REPLICAS)
+	@echo "Scaled successfully!"
+
+k3s-restart: k3s-check ## Safely restart all services after rebuilding images (imports images + rolling restart)
+	@echo "🔄 Safely restarting all k3s services..."
+	@echo ""
+	@echo "Step 1: Importing new images..."
+	@$(MAKE) k3s-import-images
+	@echo ""
+	@echo "Step 2: Rolling restart of all deployments (zero-downtime)..."
+	@echo "Restarting backend services..."
+	@kubectl rollout restart deployment/auth -n $(K3S_NAMESPACE)
+	@kubectl rollout restart deployment/data -n $(K3S_NAMESPACE)
+	@kubectl rollout restart deployment/train -n $(K3S_NAMESPACE)
+	@kubectl rollout restart deployment/predict -n $(K3S_NAMESPACE)
+	@kubectl rollout restart deployment/geocode -n $(K3S_NAMESPACE)
+	@kubectl rollout restart deployment/weather -n $(K3S_NAMESPACE)
+	@kubectl rollout restart deployment/docs -n $(K3S_NAMESPACE)
+	@kubectl rollout restart deployment/dashboard -n $(K3S_NAMESPACE)
+	@echo "Restarting nginx (depends on other services)..."
+	@kubectl rollout restart deployment/nginx -n $(K3S_NAMESPACE)
+	@echo ""
+	@echo "Step 3: Waiting for all rollouts to complete..."
+	@echo "Waiting for auth..."
+	@kubectl rollout status deployment/auth -n $(K3S_NAMESPACE) --timeout=300s || true
+	@echo "Waiting for data..."
+	@kubectl rollout status deployment/data -n $(K3S_NAMESPACE) --timeout=300s || true
+	@echo "Waiting for train..."
+	@kubectl rollout status deployment/train -n $(K3S_NAMESPACE) --timeout=300s || true
+	@echo "Waiting for predict..."
+	@kubectl rollout status deployment/predict -n $(K3S_NAMESPACE) --timeout=300s || true
+	@echo "Waiting for geocode..."
+	@kubectl rollout status deployment/geocode -n $(K3S_NAMESPACE) --timeout=300s || true
+	@echo "Waiting for weather..."
+	@kubectl rollout status deployment/weather -n $(K3S_NAMESPACE) --timeout=300s || true
+	@echo "Waiting for docs..."
+	@kubectl rollout status deployment/docs -n $(K3S_NAMESPACE) --timeout=300s || true
+	@echo "Waiting for dashboard..."
+	@kubectl rollout status deployment/dashboard -n $(K3S_NAMESPACE) --timeout=300s || true
+	@echo "Waiting for nginx..."
+	@kubectl rollout status deployment/nginx -n $(K3S_NAMESPACE) --timeout=300s || true
+	@echo ""
+	@echo "Step 4: Verifying deployment status..."
+	@kubectl get pods -n $(K3S_NAMESPACE)
+	@echo ""
+	@echo "✅ Restart completed! All services should be running with new images."
+	@echo "Check status with: make k3s-status"
+
+k3s-reload-model: ## Run model-reload Job then rollout restart predict deployment
+	@echo "Reloading model..."
+	@echo "Step 1: Deleting old model-reload job if exists..."
+	@kubectl delete job model-reload -n $(K3S_NAMESPACE) --ignore-not-found=true
+	@echo "Step 2: Creating model-reload job..."
+	@kubectl apply -f $(K3S_DIR)/30-model-reload-job.yaml
+	@echo "Step 3: Waiting for job to complete..."
+	@kubectl wait --for=condition=complete --timeout=300s job/model-reload -n $(K3S_NAMESPACE) || \
+		(echo "Error: Job failed or timed out. Check logs with: kubectl logs job/model-reload -n $(K3S_NAMESPACE)" && exit 1)
+	@echo "Step 4: Rolling restart predict deployment..."
+	@kubectl rollout restart deployment/predict -n $(K3S_NAMESPACE)
+	@echo "Step 5: Waiting for rollout to complete..."
+	@kubectl rollout status deployment/predict -n $(K3S_NAMESPACE)
+	@echo "Model reload completed successfully!"
+
+k3s-logs-predict: ## Follow logs for predict pods
+	@echo "Following predict service logs..."
+	@kubectl logs -n $(K3S_NAMESPACE) -l app=predict -f
+
+k3s-logs: ## Follow logs for all services (usage: make k3s-logs SERVICE=auth)
+	@if [ -z "$(SERVICE)" ]; then \
+		echo "Error: SERVICE variable required. Usage: make k3s-logs SERVICE=auth"; \
+		echo "Available services: auth, data, train, predict, geocode, weather, docs, dashboard, nginx, postgres"; \
+		exit 1; \
+	fi
+	@echo "Following logs for $(SERVICE)..."
+	@kubectl logs -n $(K3S_NAMESPACE) -l app=$(SERVICE) -f || \
+		kubectl logs -n $(K3S_NAMESPACE) deployment/$(SERVICE) -f
+
+k3s-get-node-ip: ## Get node IP for accessing NodePort service
+	@echo "Node IPs:"
+	@kubectl get nodes -o wide
+	@echo ""
+	@echo "Access API at: http://<node-ip>:30080"
+
+k3s-test: k3s-check ## Run API tests in k3s (builds/imports test image, creates job, waits for completion)
+	@echo "Running API tests in k3s..."
+	@echo ""
+	@echo "Step 1: Building test service image..."
+	@$(MAKE) k3s-build-test-image
+	@echo ""
+	@echo "Step 2: Importing test image into k3s..."
+	@$(MAKE) k3s-import-test-image
+	@echo ""
+	@echo "Step 3: Checking if services are running..."
+	@kubectl get pods -n $(K3S_NAMESPACE) -l app=nginx --no-headers 2>/dev/null | grep -q Running || \
+		(echo "❌ Error: Services are not running. Deploy them first with 'make k3s-deploy'" && exit 1)
+	@echo "✅ Services are running"
+	@echo ""
+	@echo "Step 4: Deleting old test job if exists..."
+	@kubectl delete job api-test -n $(K3S_NAMESPACE) --ignore-not-found=true
+	@echo ""
+	@echo "Step 5: Creating test job..."
+	@kubectl apply -f $(K3S_DIR)/35-test-job.yaml
+	@echo ""
+	@echo "Step 6: Waiting for test job to complete (max 10 minutes)..."
+	@kubectl wait --for=condition=complete --timeout=600s job/api-test -n $(K3S_NAMESPACE) || \
+		(echo "❌ Error: Test job failed or timed out. Check logs with: kubectl logs job/api-test -n $(K3S_NAMESPACE)" && exit 1)
+	@echo ""
+	@echo "Step 7: Showing test results..."
+	@kubectl logs job/api-test -n $(K3S_NAMESPACE)
+	@echo ""
+	@echo "✅ Tests completed successfully!"
+
+k3s-test-run: k3s-check ## Run API tests in k3s with custom command (usage: make k3s-test-run CMD="pytest tests/test_auth_service.py -v")
+	@if [ -z "$(CMD)" ]; then \
+		echo "Error: CMD variable required. Usage: make k3s-test-run CMD='pytest tests/test_auth_service.py -v'"; \
+		exit 1; \
+	fi
+	@echo "Running custom test command in k3s: $(CMD)"
+	@echo "Deleting old test pod if exists..."
+	@kubectl delete pod api-test -n $(K3S_NAMESPACE) --ignore-not-found=true
+	@echo "Creating test pod with custom command..."
+	@kubectl run api-test --image=mlops-accidents:test_service --image-pull-policy=Never \
+		-n $(K3S_NAMESPACE) --restart=Never \
+		--env="BASE_URL=http://nginx:80" --env="PYTHONPATH=/app" --env="PYTHONUNBUFFERED=1" \
+		-- sh -c "$(CMD)"
+	@echo "Waiting for test pod to complete (max 10 minutes)..."
+	@timeout=600; \
+	while [ $$timeout -gt 0 ]; do \
+		phase=$$(kubectl get pod api-test -n $(K3S_NAMESPACE) -o jsonpath='{.status.phase}' 2>/dev/null || echo "NotFound"); \
+		if [ "$$phase" = "Succeeded" ]; then \
+			echo "✅ Test pod completed successfully"; \
+			break; \
+		elif [ "$$phase" = "Failed" ]; then \
+			echo "❌ Test pod failed"; \
+			kubectl logs pod/api-test -n $(K3S_NAMESPACE); \
+			exit 1; \
+		fi; \
+		sleep 2; \
+		timeout=$$((timeout - 2)); \
+	done; \
+	if [ $$timeout -le 0 ]; then \
+		echo "❌ Error: Test pod timed out. Check logs with: kubectl logs pod/api-test -n $(K3S_NAMESPACE)"; \
+		kubectl logs pod/api-test -n $(K3S_NAMESPACE); \
+		exit 1; \
+	fi
+	@echo ""
+	@echo "Showing test results..."
+	@kubectl logs pod/api-test -n $(K3S_NAMESPACE)
+	@echo ""
+	@echo "✅ Custom test command completed!"
+
+k3s-test-cov: k3s-check ## Run API tests in k3s with coverage report
+	@echo "Running API tests with coverage in k3s..."
+	@echo ""
+	@echo "Step 1: Building test service image..."
+	@$(MAKE) k3s-build-test-image
+	@echo ""
+	@echo "Step 2: Importing test image into k3s..."
+	@$(MAKE) k3s-import-test-image
+	@echo ""
+	@echo "Step 3: Checking if services are running..."
+	@kubectl get pods -n $(K3S_NAMESPACE) -l app=nginx --no-headers 2>/dev/null | grep -q Running || \
+		(echo "❌ Error: Services are not running. Deploy them first with 'make k3s-deploy'" && exit 1)
+	@echo "✅ Services are running"
+	@echo ""
+	@echo "Step 4: Deleting old test pod if exists..."
+	@kubectl delete pod api-test -n $(K3S_NAMESPACE) --ignore-not-found=true
+	@echo ""
+	@echo "Step 5: Creating test pod with coverage..."
+	@kubectl run api-test --image=mlops-accidents:test_service --image-pull-policy=Never \
+		-n $(K3S_NAMESPACE) --restart=Never \
+		--env="BASE_URL=http://nginx:80" --env="PYTHONPATH=/app" --env="PYTHONUNBUFFERED=1" \
+		-- pytest tests/ -v --tb=short --cov=services --cov-report=term-missing --cov-report=html
+	@echo "Waiting for test pod to complete (max 10 minutes)..."
+	@timeout=600; \
+	while [ $$timeout -gt 0 ]; do \
+		phase=$$(kubectl get pod api-test -n $(K3S_NAMESPACE) -o jsonpath='{.status.phase}' 2>/dev/null || echo "NotFound"); \
+		if [ "$$phase" = "Succeeded" ]; then \
+			echo "✅ Test pod completed successfully"; \
+			break; \
+		elif [ "$$phase" = "Failed" ]; then \
+			echo "❌ Test pod failed"; \
+			kubectl logs pod/api-test -n $(K3S_NAMESPACE); \
+			exit 1; \
+		fi; \
+		sleep 2; \
+		timeout=$$((timeout - 2)); \
+	done; \
+	if [ $$timeout -le 0 ]; then \
+		echo "❌ Error: Test pod timed out. Check logs with: kubectl logs pod/api-test -n $(K3S_NAMESPACE)"; \
+		kubectl logs pod/api-test -n $(K3S_NAMESPACE); \
+		exit 1; \
+	fi
+	@echo ""
+	@echo "Showing test results..."
+	@kubectl logs pod/api-test -n $(K3S_NAMESPACE)
+	@echo ""
+	@echo "✅ Coverage tests completed!"
+
+k3s-test-service: k3s-check ## Run tests for specific service (usage: make k3s-test-service SERVICE=auth)
+	@if [ -z "$(SERVICE)" ]; then \
+		echo "Error: SERVICE variable required. Usage: make k3s-test-service SERVICE=auth"; \
+		echo "Available services: auth, data, train, predict"; \
+		exit 1; \
+	fi
+	@echo "Running tests for $(SERVICE) service in k3s..."
+	@echo "Deleting old test pod if exists..."
+	@kubectl delete pod api-test -n $(K3S_NAMESPACE) --ignore-not-found=true
+	@echo "Creating test pod for $(SERVICE) service..."
+	@kubectl run api-test --image=mlops-accidents:test_service --image-pull-policy=Never \
+		-n $(K3S_NAMESPACE) --restart=Never \
+		--env="BASE_URL=http://nginx:80" --env="PYTHONPATH=/app" --env="PYTHONUNBUFFERED=1" \
+		-- pytest tests/test_$(SERVICE)_service.py -v --tb=short
+	@echo "Waiting for test pod to complete (max 10 minutes)..."
+	@timeout=600; \
+	while [ $$timeout -gt 0 ]; do \
+		phase=$$(kubectl get pod api-test -n $(K3S_NAMESPACE) -o jsonpath='{.status.phase}' 2>/dev/null || echo "NotFound"); \
+		if [ "$$phase" = "Succeeded" ]; then \
+			echo "✅ Test pod completed successfully"; \
+			break; \
+		elif [ "$$phase" = "Failed" ]; then \
+			echo "❌ Test pod failed"; \
+			kubectl logs pod/api-test -n $(K3S_NAMESPACE); \
+			exit 1; \
+		fi; \
+		sleep 2; \
+		timeout=$$((timeout - 2)); \
+	done; \
+	if [ $$timeout -le 0 ]; then \
+		echo "❌ Error: Test pod timed out. Check logs with: kubectl logs pod/api-test -n $(K3S_NAMESPACE)"; \
+		kubectl logs pod/api-test -n $(K3S_NAMESPACE); \
+		exit 1; \
+	fi
+	@echo ""
+	@echo "Showing test results..."
+	@kubectl logs pod/api-test -n $(K3S_NAMESPACE)
+	@echo ""
+	@echo "✅ Tests for $(SERVICE) service completed!"
+
+k3s-test-logs: k3s-check ## Show logs from test job/pod
+	@echo "Showing test logs..."
+	@kubectl logs job/api-test -n $(K3S_NAMESPACE) 2>/dev/null || \
+		kubectl logs pod/api-test -n $(K3S_NAMESPACE) 2>/dev/null || \
+		(echo "Error: Test job/pod not found. Run tests first with 'make k3s-test'" && exit 1)
+
+k3s-test-clean: k3s-check ## Delete test job and pod
+	@echo "Deleting test resources..."
+	@kubectl delete job api-test -n $(K3S_NAMESPACE) --ignore-not-found=true
+	@kubectl delete pod api-test -n $(K3S_NAMESPACE) --ignore-not-found=true
+	@echo "Test resources deleted!"

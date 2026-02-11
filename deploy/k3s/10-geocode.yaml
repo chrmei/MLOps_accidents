@@ -1,0 +1,77 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: geocode
+  namespace: mlops
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: geocode
+  template:
+    metadata:
+      labels:
+        app: geocode
+    spec:
+      containers:
+      - name: geocode
+        image: mlops-accidents:geocode_service
+        imagePullPolicy: Never
+        env:
+        - name: SERVICE_NAME
+          value: "geocode-service"
+        - name: LOG_LEVEL
+          valueFrom:
+            configMapKeyRef:
+              name: mlops-config
+              key: LOG_LEVEL
+        - name: JWT_SECRET_KEY
+          valueFrom:
+            secretKeyRef:
+              name: mlops-secrets
+              key: JWT_SECRET_KEY
+        - name: GEOCODE_PROVIDER
+          value: "nominatim"
+        - name: NOMINATIM_BASE_URL
+          value: "https://nominatim.openstreetmap.org"
+        - name: GEOCODE_RATE_LIMIT_PER_SECOND
+          value: "2"
+        - name: PYTHONUNBUFFERED
+          value: "1"
+        ports:
+        - containerPort: 8005
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "256Mi"
+            cpu: "500m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8005
+          initialDelaySeconds: 30
+          periodSeconds: 30
+          timeoutSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8005
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 5
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: geocode
+  namespace: mlops
+spec:
+  selector:
+    app: geocode
+  ports:
+  - port: 8005
+    targetPort: 8005
+  type: ClusterIP

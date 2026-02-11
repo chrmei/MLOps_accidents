@@ -1,0 +1,11 @@
+# Kubernetes secrets - NEVER commit real secrets!
+# Secrets are created via: make k3s-create-secrets (reads from .env)
+# See .env.example in project root for required secret variables
+02-secret.yaml
+*-secret.yaml
+secrets/
+*.secret.yaml
+
+# Any local overrides
+*.local.yaml
+*.local.yml
