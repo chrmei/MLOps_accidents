@@ -6,10 +6,11 @@ No per-request model loading.
 """
 
 import logging
-import pandas as pd
-from evidently import Report, DataDefinition, Dataset, BinaryClassification
-from evidently.metrics import Accuracy, Precision, Recall, F1Score, DriftedColumnsCount
 from typing import Any, Dict, List, Optional, Tuple, Union
+
+import pandas as pd
+from evidently import BinaryClassification, DataDefinition, Dataset, Report
+from evidently.metrics import Accuracy, DriftedColumnsCount, F1Score, Precision, Recall
 
 from src.features.preprocess import align_features_with_model, preprocess_for_inference
 from src.models.predict_model import get_expected_features
@@ -34,6 +35,7 @@ def _model_type_display(model_type: str) -> str:
     return MODEL_TYPE_DISPLAY.get(lower) or model_type.replace(
         "_", " "
     ).title().replace(" ", "")
+
 
 def _preprocess(
     features: Union[Dict[str, Any], List[Dict[str, Any]]],
@@ -81,6 +83,7 @@ def _preprocess(
         )
     return df_features
 
+
 def _preprocess_and_predict_one(
     features: Dict[str, Any],
     model: Any,
@@ -104,7 +107,10 @@ def _preprocess_and_predict_one(
             logger.debug("predict_proba failed: %s", e)
     return prediction, proba
 
-def make_prediction(features: Dict[str, Any], model_cache: Dict[str, Any]) -> Dict[str, Any]:
+
+def make_prediction(
+    features: Dict[str, Any], model_cache: Dict[str, Any]
+) -> Dict[str, Any]:
     """
     Make a single prediction using the cached Production model.
 
@@ -175,19 +181,20 @@ def make_batch_prediction(
         "model_type": _model_type_display(model_type),
     }
 
+
 def evaluate_test_set(
     eval_data: List[Dict[str, Any]],
     model_cache: Dict[str, Any],
-    ref_data: Optional[List[Dict[str, Any]]]=None,  # Optional reference data for drift comparison
+    ref_data: Optional[List[Dict[str, Any]]] = None,
 ) -> Dict[str, Any]:
     """
     Evaluate model on a test set using Evidently.
     Args:
         eval_data: List of feature dicts including true labels.
-        ref_data: Optional list of feature dicts to use as reference for drift detection.
+        ref_data: Optional list of feature dicts to use as reference for data drift detection.
         model_cache: Must have keys: model, label_encoders, metadata, model_type.
     Returns:
-        Dict with evaluation "metrics" (incl. Accuracy, Precision, Recall, F1 Score), "data_drift", and "model_type".
+        Dict with evaluation "metrics" (incl. Accuracy, Precision, Recall, F1 Score), "col_drift_share", and "model_type".
     """
 
     # Define feature types
@@ -269,33 +276,43 @@ def evaluate_test_set(
     metadata = model_cache["metadata"]
     model_type = model_cache["model_type"]
 
-    eval_targets = [row.pop("grav",None) for row in eval_data]
-    eval_features_df = _preprocess(eval_data, model, label_encoders, metadata, model_type)
+    eval_targets = [row.pop("grav", None) for row in eval_data]
+    eval_features_df = _preprocess(
+        eval_data, model, label_encoders, metadata, model_type
+    )
     eval_predictions = model.predict(eval_features_df)
     eval_features_df[TARGET] = eval_targets
     eval_features_df[PREDICTION] = eval_predictions
 
     # Define Evidently Dataset
     schema = DataDefinition(
-        classification=[BinaryClassification(
-            target=TARGET,
-            prediction_labels=PREDICTION,
-        )],
-        numerical_columns=[feat for feat in NUM_FEATS if feat in eval_features_df.columns],
-        categorical_columns=[feat for feat in CAT_FEATS if feat in eval_features_df.columns],
+        classification=[
+            BinaryClassification(
+                target=TARGET,
+                prediction_labels=PREDICTION,
+            )
+        ],
+        numerical_columns=[
+            feat for feat in NUM_FEATS if feat in eval_features_df.columns
+        ],
+        categorical_columns=[
+            feat for feat in CAT_FEATS if feat in eval_features_df.columns
+        ],
     )
     eval_dataset = Dataset.from_pandas(data=eval_features_df, data_definition=schema)
 
     ref_dataset = None
     if ref_data is not None:
-        ref_targets = [row.pop("grav",None) for row in ref_data]
-        ref_features_df = _preprocess(ref_data, model, label_encoders, metadata, model_type)
+        ref_targets = [row.pop("grav", None) for row in ref_data]
+        ref_features_df = _preprocess(
+            ref_data, model, label_encoders, metadata, model_type
+        )
         ref_predictions = model.predict(ref_features_df)
         ref_features_df[TARGET] = ref_targets
         ref_features_df[PREDICTION] = ref_predictions
         ref_dataset = Dataset.from_pandas(data=ref_features_df, data_definition=schema)
         metrics.append(DriftedColumnsCount())
-    
+
     # Generate Evidently Report
     report = Report(metrics=metrics)
     eval_rep = report.run(
@@ -305,17 +322,17 @@ def evaluate_test_set(
 
     # Extract metrics and data drift status from the report
     eval_dict = eval_rep.dict()
-    accuracy = eval_dict["metrics"][0]['value']
-    precision = float(eval_dict["metrics"][1]['value'])
-    recall = float(eval_dict["metrics"][2]['value'])
-    f1_score = float(eval_dict["metrics"][3]['value'])
+    accuracy = eval_dict["metrics"][0]["value"]
+    precision = float(eval_dict["metrics"][1]["value"])
+    recall = float(eval_dict["metrics"][2]["value"])
+    f1_score = float(eval_dict["metrics"][3]["value"])
+
     col_drift_count = None
     col_drift_share = None
-    data_drift = None
     if len(eval_dict["metrics"]) == 5:
-        col_drift_count = eval_dict["metrics"][4]['value']['count']
-        col_drift_share = eval_dict["metrics"][4]['value']['share']
-        data_drift = col_drift_share > 0.5
+        col_drift_count = eval_dict["metrics"][4]["value"]["count"]
+        col_drift_share = eval_dict["metrics"][4]["value"]["share"]
+
     return {
         "metrics": {
             "accuracy": accuracy,
@@ -323,6 +340,6 @@ def evaluate_test_set(
             "recall": recall,
             "f1_score": f1_score,
         },
-        "data_drift": data_drift,
-        "model_type":  _model_type_display(model_type),
+        "col_drift_share": col_drift_share,
+        "model_type": _model_type_display(model_type),
     }

@@ -531,7 +531,10 @@ services:
     volumes:
       - ./data:/app/data:ro
     depends_on:
-      - predict
+      predict:
+        condition: service_healthy
+      auth:
+        condition: service_healthy
     networks:
       - mlops-network
   
@@ -546,7 +549,10 @@ services:
     volumes:
       - ./data:/app/data:ro
     depends_on:
-      - predict
+      predict:
+        condition: service_healthy
+      auth:
+        condition: service_healthy
     networks:
       - mlops-network
 

@@ -4,23 +4,32 @@ FastAPI routes for the predict service.
 
 import asyncio
 import time
+
 from fastapi import APIRouter, Depends, Request
 
 from services.common.dependencies import AuthenticatedUser
 from services.common.models import ModelMetrics
 
-from ..core.predictor import make_batch_prediction, make_prediction, evaluate_test_set
-from ..core.prom_metrics import api_requests_total, api_request_duration_seconds, model_accuracy_score, model_precision_score, model_recall_score, model_f1_score, evidently_data_drift_detected_status
+from ..core.predictor import evaluate_test_set, make_batch_prediction, make_prediction
+from ..core.prom_metrics import (
+    api_request_duration_seconds,
+    api_requests_total,
+    evidently_col_drift_share,
+    model_accuracy_score,
+    model_f1_score,
+    model_precision_score,
+    model_recall_score,
+)
 from .schemas import (
     BatchPredictionRequest,
     BatchPredictionResponse,
+    EvaluationRequest,
+    EvaluationResponse,
     FeatureEngineeringConfig,
     InputFeaturesResponse,
     ModelInfoResponse,
     PredictionRequest,
     PredictionResponse,
-    EvaluationRequest,
-    EvaluationResponse,
 )
 
 router = APIRouter(prefix="/api/v1/predict", tags=["predict"])
@@ -47,8 +56,12 @@ async def single_prediction(
     )
     end_time = time.time()
     duration = end_time - start_time
-    api_request_duration_seconds.labels(endpoint=http_request.url.path, method="POST", status_code="200").observe(duration)
-    api_requests_total.labels(endpoint=http_request.url.path, method="POST", status_code="200").inc()
+    api_request_duration_seconds.labels(
+        endpoint=http_request.url.path, method="POST", status_code="200"
+    ).observe(duration)
+    api_requests_total.labels(
+        endpoint=http_request.url.path, method="POST", status_code="200"
+    ).inc()
     return PredictionResponse(
         prediction=result["prediction"],
         probability=result["probability"],
@@ -72,8 +85,12 @@ async def batch_prediction(
     )
     end_time = time.time()
     duration = end_time - start_time
-    api_request_duration_seconds.labels(endpoint=http_request.url.path, method="POST", status_code="200").observe(duration)
-    api_requests_total.labels(endpoint=http_request.url.path, method="POST", status_code="200").inc()
+    api_request_duration_seconds.labels(
+        endpoint=http_request.url.path, method="POST", status_code="200"
+    ).observe(duration)
+    api_requests_total.labels(
+        endpoint=http_request.url.path, method="POST", status_code="200"
+    ).inc()
     return BatchPredictionResponse(
         predictions=result["predictions"],
         probabilities=result["probabilities"],
@@ -89,11 +106,14 @@ async def list_loaded_model(
     model_cache=Depends(get_model_cache),
 ):
     """Return the currently loaded Production model (loaded at container start)."""
-    api_requests_total.labels(endpoint=http_request.url.path, method="GET", status_code="200").inc()
+    api_requests_total.labels(
+        endpoint=http_request.url.path, method="GET", status_code="200"
+    ).inc()
     return {
         "loaded_model_type": model_cache["model_type"],
         "source": "MLflow Production (best by f1_score)",
     }
+
 
 @router.post("/evaluate", response_model=EvaluationResponse)
 async def evaluate_model(
@@ -112,22 +132,27 @@ async def evaluate_model(
     )
     end_time = time.time()
     duration = end_time - start_time
-    api_request_duration_seconds.labels(endpoint=http_request.url.path, method="POST", status_code="200").observe(duration)
-    api_requests_total.labels(endpoint=http_request.url.path, method="POST", status_code="200").inc()
+    api_request_duration_seconds.labels(
+        endpoint=http_request.url.path, method="POST", status_code="200"
+    ).observe(duration)
+    api_requests_total.labels(
+        endpoint=http_request.url.path, method="POST", status_code="200"
+    ).inc()
 
     # Update Prometheus Model Metrics
     model_accuracy_score.set(result["metrics"]["accuracy"])
     model_precision_score.set(result["metrics"]["precision"])
     model_recall_score.set(result["metrics"]["recall"])
     model_f1_score.set(result["metrics"]["f1_score"])
-    if result["data_drift"] is not None:
-        evidently_data_drift_detected_status.set(int(result["data_drift"]))
+    if result["col_drift_share"] is not None:
+        evidently_col_drift_share.set(result["col_drift_share"])
 
     return EvaluationResponse(
-        metrics= ModelMetrics(**result["metrics"]),
-        data_drift=result["data_drift"],
+        metrics=ModelMetrics(**result["metrics"]),
+        col_drift_share=result["col_drift_share"],
         model_type=result["model_type"],
     )
+
 
 @router.get("/model-info", response_model=ModelInfoResponse)
 async def get_model_info(
@@ -137,31 +162,33 @@ async def get_model_info(
     """Get detailed model information including feature engineering config."""
     metadata = model_cache.get("metadata", {})
     model_type = model_cache.get("model_type", "Unknown")
-    
+
     # Try to get MLflow signature if model_uri is available
     mlflow_signature_available = False
     input_features = None
-    
+
     # Check if model_uri is in cache (might be added during model loading)
     model_uri = model_cache.get("model_uri")
     if model_uri:
         try:
             from mlflow.models.model import get_model_info
+
             model_info = get_model_info(model_uri)
             if model_info.signature:
                 mlflow_signature_available = True
                 input_features = model_info.signature.inputs.input_names()
         except Exception:
             pass
-    
+
     # Fallback to metadata if signature not available
     if input_features is None:
         input_features = metadata.get("input_features")
         if input_features is None:
             # Last resort: use canonical schema
             from src.features.schema import get_canonical_input_features
+
             input_features = get_canonical_input_features()
-    
+
     # Build feature engineering config
     fe_config = FeatureEngineeringConfig(
         feature_engineering_version=metadata.get("feature_engineering_version"),
@@ -171,7 +198,7 @@ async def get_model_info(
         apply_cyclic_encoding=metadata.get("apply_cyclic_encoding", True),
         apply_interactions=metadata.get("apply_interactions", True),
     )
-    
+
     return ModelInfoResponse(
         model_type=model_type,
         model_version=None,  # Could be extracted from MLflow if needed
@@ -188,33 +215,35 @@ async def get_input_features(
 ):
     """Get canonical input features expected by the model."""
     metadata = model_cache.get("metadata", {})
-    
+
     # Try MLflow signature first (most reliable)
     model_uri = model_cache.get("model_uri")
     source = "inferred"
     input_features = None
-    
+
     if model_uri:
         try:
             from mlflow.models.model import get_model_info
+
             model_info = get_model_info(model_uri)
             if model_info.signature:
                 input_features = model_info.signature.inputs.input_names()
                 source = "mlflow_signature"
         except Exception:
             pass
-    
+
     # Fallback to metadata
     if input_features is None and metadata.get("input_features"):
         input_features = metadata["input_features"]
         source = "metadata"
-    
+
     # Last resort: use canonical schema
     if input_features is None:
         from src.features.schema import get_canonical_input_features
+
         input_features = get_canonical_input_features()
         source = "canonical_schema"
-    
+
     return InputFeaturesResponse(
         input_features=input_features,
         uses_grouped_features=metadata.get("uses_grouped_features", False),

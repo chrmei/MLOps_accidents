@@ -35,7 +35,7 @@ MODEL_CONFIG_PATH = "src/config/model_config.yaml"
 def load_model_from_cache(cache_dir: str):
     """
     Load model from cache directory if available.
-    
+
     Returns:
         tuple: (model, label_encoders, metadata, model_type, model_uri) or None if not found
     """
@@ -45,10 +45,14 @@ def load_model_from_cache(cache_dir: str):
     metadata_file = cache_path / "metadata.pkl"
     model_type_file = cache_path / "model_type.txt"
     model_uri_file = cache_path / "model_uri.txt"
-    
-    if not model_file.exists() or not encoders_file.exists() or not metadata_file.exists():
+
+    if (
+        not model_file.exists()
+        or not encoders_file.exists()
+        or not metadata_file.exists()
+    ):
         return None
-    
+
     try:
         logger.info(f"Loading model from cache: {cache_dir}")
         with open(model_file, "rb") as f:
@@ -57,17 +61,17 @@ def load_model_from_cache(cache_dir: str):
             label_encoders = pickle.load(f)
         with open(metadata_file, "rb") as f:
             metadata = pickle.load(f)
-        
+
         model_type = "unknown"
         if model_type_file.exists():
             with open(model_type_file, "r") as f:
                 model_type = f.read().strip()
-        
+
         model_uri = None
         if model_uri_file.exists():
             with open(model_uri_file, "r") as f:
                 model_uri = f.read().strip()
-        
+
         logger.info(f"Successfully loaded model from cache (model_type={model_type})")
         return model, label_encoders, metadata, model_type, model_uri
     except Exception as e:
@@ -79,7 +83,7 @@ def load_model_from_cache(cache_dir: str):
 async def lifespan(app: FastAPI):
     """
     Load the best Production model at startup.
-    
+
     Priority:
     1. MODEL_CACHE_DIR (if set and cache exists) - for k3s deployments
     2. MLflow Production model - fallback or when cache not available
@@ -106,7 +110,7 @@ async def lifespan(app: FastAPI):
             )
             yield
             return
-    
+
     # Fallback to MLflow
     try:
         logger.info("Loading best Production model from MLflow...")
@@ -158,6 +162,7 @@ app.add_middleware(
 async def healthcheck() -> HealthResponse:
     """Service liveness probe."""
     return HealthResponse(service=settings.SERVICE_NAME)
+
 
 @app.get("/metrics")
 async def metrics():

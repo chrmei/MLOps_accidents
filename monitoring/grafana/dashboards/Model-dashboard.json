@@ -19,7 +19,7 @@
   "editable": true,
   "fiscalYearStartMonth": 0,
   "graphTooltip": 0,
-  "id": 4,
+  "id": 2,
   "links": [],
   "panels": [
     {
@@ -309,7 +309,7 @@
               }
             ]
           },
-          "unit": "bool"
+          "unit": "percentunit"
         },
         "overrides": []
       },
@@ -341,13 +341,13 @@
       "targets": [
         {
           "editorMode": "builder",
-          "expr": "data_drift_status",
+          "expr": "column_drift_share",
           "legendFormat": "__auto",
           "range": true,
           "refId": "A"
         }
       ],
-      "title": "Data Drift Detected Status",
+      "title": "Column Drift Share",
       "type": "stat"
     }
   ],
@@ -365,5 +365,5 @@
   "timezone": "browser",
   "title": "Model Performance & Drift",
   "uid": "model_perfdrift_dashboard",
-  "version": 1
+  "version": 2
 }

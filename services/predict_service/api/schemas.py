@@ -52,7 +52,7 @@ class EvaluationResponse(BaseModel):
     """Response payload for model evaluation."""
 
     metrics: ModelMetrics
-    data_drift: Optional[bool]
+    col_drift_share: Optional[float]
     model_type: str
 
 

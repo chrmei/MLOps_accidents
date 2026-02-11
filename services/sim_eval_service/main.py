@@ -42,7 +42,7 @@ if __name__ == "__main__":
     eval_dicts = eval_df.to_dict(orient="records")
     payload = {
         "eval_data": eval_dicts,
-        "ref_data": ref_dicts,
+        "ref_data": ref_dicts if ref_dicts else None,
     }
 
     response = requests.post(
