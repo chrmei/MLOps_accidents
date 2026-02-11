@@ -287,7 +287,7 @@ dvc-repro: ## Reproduce DVC pipeline
 
 docker-up: ## Start all microservices (nginx, auth, data, train, predict)
 	@echo "Starting microservices..."
-	docker compose up -d nginx auth data train predict
+	docker compose up -d nginx auth data train predict prometheus grafana
 	@echo "Services started! API available at http://localhost"
 
 docker-up-all: ## Start all microservices including test service
@@ -302,7 +302,7 @@ docker-down: ## Stop all microservices
 
 docker-build-services: ## Build all microservice images
 	@echo "Building microservice images..."
-	docker compose build nginx auth data train predict
+	docker compose build nginx auth data train predict prometheus grafana node-exporter
 	@echo "All microservice images built!"
 
 docker-build-test: ## Build test service image
