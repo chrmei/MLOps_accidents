@@ -35,16 +35,14 @@ def _model_type_display(model_type: str) -> str:
         "_", " "
     ).title().replace(" ", "")
 
-
-def _preprocess_and_predict_one(
-    features: Dict[str, Any],
+def _preprocess(
+    features: Union[Dict[str, Any], List[Dict[str, Any]]],
     model: Any,
     label_encoders: Any,
     metadata: Any,
     model_type: str,
-) -> Tuple[Any, Optional[float]]:
-    """Preprocess features, run model.predict and predict_proba when available.
-    Returns (raw prediction, probability of positive class or None)."""
+) -> pd.DataFrame:
+    """Preprocess features and return the feature dataframe"""
     if metadata and not isinstance(metadata, dict):
         metadata = None
     apply_cyclic_encoding = (
@@ -81,6 +79,18 @@ def _preprocess_and_predict_one(
         logger.info(
             f"After alignment: {len(df_features.columns)} features match model expectations"
         )
+    return df_features
+
+def _preprocess_and_predict_one(
+    features: Dict[str, Any],
+    model: Any,
+    label_encoders: Any,
+    metadata: Any,
+    model_type: str,
+) -> Tuple[Any, Optional[float]]:
+    """Preprocess features, run model.predict and predict_proba when available.
+    Returns (raw prediction, probability of positive class or None)."""
+    df_features = _preprocess(features, model, label_encoders, metadata, model_type)
     prediction = model.predict(df_features)
     proba: Optional[float] = None
     if hasattr(model, "predict_proba"):
@@ -93,37 +103,6 @@ def _preprocess_and_predict_one(
         except Exception as e:  # noqa: BLE001
             logger.debug("predict_proba failed: %s", e)
     return prediction, proba
-
-def _preprocess(
-    features: Union[Dict[str, Any], List[Dict[str, Any]]],
-    model: Any,
-    label_encoders: Any,
-    metadata: Any,
-    model_type: str,
-) -> pd.DataFrame:
-    """Preprocess features and return the feature dataframe"""
-    if metadata and not isinstance(metadata, dict):
-        metadata = None
-    apply_cyclic_encoding = (
-        metadata.get("apply_cyclic_encoding", True) if isinstance(metadata, dict) else True
-    )
-    apply_interactions = (
-        metadata.get("apply_interactions", True) if isinstance(metadata, dict) else True
-    )
-    model_type_display = _model_type_display(model_type)
-    df_features = preprocess_for_inference(
-        features,
-        label_encoders=label_encoders,
-        apply_cyclic_encoding=apply_cyclic_encoding,
-        apply_interactions=apply_interactions,
-        model_type=model_type_display,
-    )
-    expected_features = get_expected_features(model, metadata)
-    if expected_features is None:
-        expected_features = list(df_features.columns)
-    else:
-        df_features = align_features_with_model(df_features, expected_features)
-    return df_features
 
 def make_prediction(features: Dict[str, Any], model_cache: Dict[str, Any]) -> Dict[str, Any]:
     """
@@ -214,16 +193,22 @@ def evaluate_test_set(
     # Define feature types
     CAT_FEATS = [
         "place",
+        "place_group",
         "catu",
         "sexe",
         "secu1",
+        "secu_group",
         "locp",
         "actp",
         "etatp",
         "catv",
+        "catv_group",
         "obs",
+        "obs_group",
         "obsm",
+        "obsm_group",
         "motor",
+        "motor_group",
         "catr",
         "v1",
         "circ",
@@ -272,16 +257,6 @@ def evaluate_test_set(
     TARGET = "grav"
     PREDICTION = "grav_pred"
 
-    # Define Evidently Dataset
-    schema = DataDefinition(
-        classification=[BinaryClassification(
-            target=TARGET,
-            prediction_labels=PREDICTION,
-        )],
-        numerical_columns=NUM_FEATS,
-        categorical_columns=CAT_FEATS,
-    )
-
     metrics = [
         Accuracy(),
         Precision(),
@@ -299,6 +274,16 @@ def evaluate_test_set(
     eval_predictions = model.predict(eval_features_df)
     eval_features_df[TARGET] = eval_targets
     eval_features_df[PREDICTION] = eval_predictions
+
+    # Define Evidently Dataset
+    schema = DataDefinition(
+        classification=[BinaryClassification(
+            target=TARGET,
+            prediction_labels=PREDICTION,
+        )],
+        numerical_columns=[feat for feat in NUM_FEATS if feat in eval_features_df.columns],
+        categorical_columns=[feat for feat in CAT_FEATS if feat in eval_features_df.columns],
+    )
     eval_dataset = Dataset.from_pandas(data=eval_features_df, data_definition=schema)
 
     ref_dataset = None
@@ -324,9 +309,13 @@ def evaluate_test_set(
     precision = float(eval_dict["metrics"][1]['value'])
     recall = float(eval_dict["metrics"][2]['value'])
     f1_score = float(eval_dict["metrics"][3]['value'])
-    col_drift_count = eval_dict["metrics"][4]['value']['count'] if len(eval_dict["metrics"]) == 5 else None
-    col_drift_share = eval_dict["metrics"][4]['value']['share'] if len(eval_dict["metrics"]) == 5 else None
-
+    col_drift_count = None
+    col_drift_share = None
+    data_drift = None
+    if len(eval_dict["metrics"]) == 5:
+        col_drift_count = eval_dict["metrics"][4]['value']['count']
+        col_drift_share = eval_dict["metrics"][4]['value']['share']
+        data_drift = col_drift_share > 0.5
     return {
         "metrics": {
             "accuracy": accuracy,
@@ -334,6 +323,6 @@ def evaluate_test_set(
             "recall": recall,
             "f1_score": f1_score,
         },
-        "data_drift": col_drift_share,
+        "data_drift": data_drift,
         "model_type":  _model_type_display(model_type),
     }

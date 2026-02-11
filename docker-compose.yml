@@ -517,6 +517,39 @@ services:
       - mlops-network
     restart: unless-stopped
 
+  # ===========================================================================
+  # Simulation Service
+  # ===========================================================================
+  sim-eval:
+    build:
+      context: ./services/sim_eval_service
+      dockerfile: Dockerfile
+    container_name: mlops-sim-eval-service
+    environment:
+      - ADMIN_USERNAME=${ADMIN_USERNAME:-admin}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD:-admin}
+    volumes:
+      - ./data:/app/data:ro
+    depends_on:
+      - predict
+    networks:
+      - mlops-network
+  
+  sim-traffic:
+    build:
+      context: ./services/sim_traffic_service
+      dockerfile: Dockerfile
+    container_name: mlops-sim-traffic-service
+    environment:
+      - ADMIN_USERNAME=${ADMIN_USERNAME:-admin}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD:-admin}
+    volumes:
+      - ./data:/app/data:ro
+    depends_on:
+      - predict
+    networks:
+      - mlops-network
+
 # =============================================================================
 # Networks
 # =============================================================================
