@@ -9,13 +9,15 @@ independently and registers models to MLflow; this service only reads from it.
 import logging
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Response
 from fastapi.middleware.cors import CORSMiddleware
+from prometheus_client import generate_latest
 
 from services.common.config import settings
 from services.common.models import HealthResponse
 
 from .api.routes import router as predict_router
+from .core.prom_metrics import registry
 
 logger = logging.getLogger(__name__)
 
@@ -69,6 +71,13 @@ app.add_middleware(
 async def healthcheck() -> HealthResponse:
     """Service liveness probe."""
     return HealthResponse(service=settings.SERVICE_NAME)
+
+@app.get("/metrics")
+async def metrics():
+    """
+    Expose Prometheus metrics.
+    """
+    return Response(content=generate_latest(registry), media_type="text/plain")
 
 
 app.include_router(predict_router)
