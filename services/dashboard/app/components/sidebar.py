@@ -51,6 +51,30 @@ def render_sidebar():
             st.link_button("Docs", f"{BROWSER_BASE_URL}/docs", use_container_width=True)
             st.link_button("OpenAPI", f"{BROWSER_BASE_URL}/openapi.json", use_container_width=True)
             st.link_button("redoc", f"{BROWSER_BASE_URL}/redoc", use_container_width=True)
+        
+        # Presentation dropdown using expander
+        with st.sidebar.expander("Presentation", expanded=False):
+            if st.button("Introduction", key="pres_intro", use_container_width=True):
+                st.session_state[PAGE_KEY] = "presentation_intro"
+                st.rerun()
+            if st.button("Architecture", key="pres_arch", use_container_width=True):
+                st.session_state[PAGE_KEY] = "presentation_architecture"
+                st.rerun()
+            if st.button("ML Pipeline", key="pres_ml", use_container_width=True):
+                st.session_state[PAGE_KEY] = "presentation_ml_pipeline"
+                st.rerun()
+            if st.button("Frontend", key="pres_frontend", use_container_width=True):
+                st.session_state[PAGE_KEY] = "presentation_frontend"
+                st.rerun()
+            if st.button("Monitoring", key="pres_monitoring", use_container_width=True):
+                st.session_state[PAGE_KEY] = "presentation_monitoring"
+                st.rerun()
+            if st.button("DevOps", key="pres_devops", use_container_width=True):
+                st.session_state[PAGE_KEY] = "presentation_devops"
+                st.rerun()
+            if st.button("Conclusion", key="pres_conclusion", use_container_width=True):
+                st.session_state[PAGE_KEY] = "presentation_conclusion"
+                st.rerun()
     
     st.sidebar.markdown("---")
     if st.sidebar.button("Logout", type="secondary"):
