@@ -543,26 +543,31 @@ def load_model_from_registry(
                 if isinstance(loaded_metadata, dict):
                     metadata.update(loaded_metadata)
                 else:
-                    logger.warning(f"Metadata file exists but is not a dict (type: {type(loaded_metadata)})")
+                    logger.warning(
+                        f"Metadata file exists but is not a dict (type: {type(loaded_metadata)})"
+                    )
                 logger.info("Loaded model metadata from MLflow artifacts")
             else:
                 logger.warning(
                     "Model metadata not found in MLflow artifacts. "
                     "Consider storing metadata as MLflow artifacts during training."
                 )
-            
+
             # Infer missing feature engineering config for backward compatibility
             if metadata and not metadata.get("feature_engineering_version"):
-                logger.info("Inferring feature engineering config for backward compatibility...")
+                logger.info(
+                    "Inferring feature engineering config for backward compatibility..."
+                )
                 inferred_config = infer_feature_engineering_config(model, metadata)
                 metadata.update(inferred_config)
-                
+
                 # Also infer input features if missing
                 if not metadata.get("input_features"):
                     from src.features.schema import get_canonical_input_features
+
                     metadata["input_features"] = get_canonical_input_features()
                     logger.info("Inferred input features from canonical schema")
-            
+
             # Store model_uri for later use (e.g., accessing MLflow signature)
             metadata["model_uri"] = model_uri
 
@@ -609,22 +614,29 @@ def load_model_from_registry(
             loaded_metadata = joblib.load(local_metadata_path)
             if isinstance(loaded_metadata, dict):
                 metadata.update(loaded_metadata)
-                logger.info(f"Loaded metadata from local filesystem: {local_metadata_path}")
+                logger.info(
+                    f"Loaded metadata from local filesystem: {local_metadata_path}"
+                )
             else:
-                logger.warning(f"Metadata file exists but is not a dict (type: {type(loaded_metadata)})")
-        
+                logger.warning(
+                    f"Metadata file exists but is not a dict (type: {type(loaded_metadata)})"
+                )
+
         # Infer missing feature engineering config for backward compatibility
         if metadata and not metadata.get("feature_engineering_version"):
-            logger.info("Inferring feature engineering config for backward compatibility...")
+            logger.info(
+                "Inferring feature engineering config for backward compatibility..."
+            )
             inferred_config = infer_feature_engineering_config(model, metadata)
             metadata.update(inferred_config)
-            
+
             # Also infer input features if missing
             if not metadata.get("input_features"):
                 from src.features.schema import get_canonical_input_features
+
                 metadata["input_features"] = get_canonical_input_features()
                 logger.info("Inferred input features from canonical schema")
-    
+
     # Store model_uri for later use (e.g., accessing MLflow signature)
     metadata["model_uri"] = model_uri
 
@@ -681,16 +693,19 @@ def load_model_artifacts(model_path: str):
             )
     else:
         logger.warning(f"Feature metadata not found at {metadata_path}")
-    
+
     # Infer missing feature engineering config for backward compatibility
     if metadata and not metadata.get("feature_engineering_version"):
-        logger.info("Inferring feature engineering config for backward compatibility...")
+        logger.info(
+            "Inferring feature engineering config for backward compatibility..."
+        )
         inferred_config = infer_feature_engineering_config(model, metadata)
         metadata.update(inferred_config)
-        
+
         # Also infer input features if missing
         if not metadata.get("input_features"):
             from src.features.schema import get_canonical_input_features
+
             metadata["input_features"] = get_canonical_input_features()
             logger.info("Inferred input features from canonical schema")
 
@@ -700,17 +715,17 @@ def load_model_artifacts(model_path: str):
 def infer_feature_engineering_config(model, metadata=None):
     """
     Infer feature engineering configuration for backward compatibility with old models.
-    
+
     Detects if grouped features are used by checking feature names and builds
     appropriate configuration.
-    
+
     Parameters
     ----------
     model : object
         Trained model (pipeline)
     metadata : dict, optional
         Feature metadata dictionary
-        
+
     Returns
     -------
     dict
@@ -724,9 +739,12 @@ def infer_feature_engineering_config(model, metadata=None):
         # Try to extract from model
         if hasattr(model, "steps") and len(model.steps) > 0:
             estimator = model.steps[-1][1]
-            if hasattr(estimator, "feature_names_in_") and estimator.feature_names_in_ is not None:
+            if (
+                hasattr(estimator, "feature_names_in_")
+                and estimator.feature_names_in_ is not None
+            ):
                 feature_names = list(estimator.feature_names_in_)
-    
+
     if feature_names is None:
         # Can't infer without feature names
         return {
@@ -735,11 +753,18 @@ def infer_feature_engineering_config(model, metadata=None):
             "grouped_feature_mappings": {},
             "removed_features": [],
         }
-    
+
     # Detect grouped features
-    grouped_features = ["place_group", "secu_group", "catv_group", "motor_group", "obsm_group", "obs_group"]
+    grouped_features = [
+        "place_group",
+        "secu_group",
+        "catv_group",
+        "motor_group",
+        "obsm_group",
+        "obs_group",
+    ]
     uses_grouped_features = any(feat in feature_names for feat in grouped_features)
-    
+
     # Build grouped feature mappings
     grouped_feature_mappings = {}
     removed_features = []
@@ -758,10 +783,12 @@ def infer_feature_engineering_config(model, metadata=None):
                 # If source feature is not in final features, it was removed
                 if source not in feature_names:
                     removed_features.append(source)
-    
+
     # Determine version
-    feature_engineering_version = "v2.0-grouped-features" if uses_grouped_features else "v1.0-legacy"
-    
+    feature_engineering_version = (
+        "v2.0-grouped-features" if uses_grouped_features else "v1.0-legacy"
+    )
+
     return {
         "feature_engineering_version": feature_engineering_version,
         "uses_grouped_features": uses_grouped_features,
@@ -797,7 +824,10 @@ def get_expected_features(model, metadata=None):
     # 1) Get model-expected feature count from estimator internals
     model_feature_count = None
     if estimator is not None:
-        if hasattr(estimator, "n_features_in_") and estimator.n_features_in_ is not None:
+        if (
+            hasattr(estimator, "n_features_in_")
+            and estimator.n_features_in_ is not None
+        ):
             model_feature_count = int(estimator.n_features_in_)
         elif hasattr(estimator, "booster_") and estimator.booster_ is not None:
             booster = estimator.booster_
@@ -805,14 +835,18 @@ def get_expected_features(model, metadata=None):
                 try:
                     model_feature_count = int(booster.num_feature())
                 except Exception as e:
-                    logger.debug("Failed to read LightGBM booster_ feature count: %s", e)
+                    logger.debug(
+                        "Failed to read LightGBM booster_ feature count: %s", e
+                    )
         elif hasattr(estimator, "_Booster") and estimator._Booster is not None:
             booster = estimator._Booster
             if hasattr(booster, "num_feature"):
                 try:
                     model_feature_count = int(booster.num_feature())
                 except Exception as e:
-                    logger.debug("Failed to read LightGBM _Booster feature count: %s", e)
+                    logger.debug(
+                        "Failed to read LightGBM _Booster feature count: %s", e
+                    )
 
     # 2) Try metadata first only if it matches model feature count
     if metadata_features is not None:
@@ -894,7 +928,9 @@ def get_expected_features(model, metadata=None):
                     )
                     return feature_names
                 except Exception as e:
-                    logger.debug("Failed to extract features from LightGBM booster_: %s", e)
+                    logger.debug(
+                        "Failed to extract features from LightGBM booster_: %s", e
+                    )
 
         # LightGBM _Booster attribute (alternative access)
         if hasattr(estimator, "_Booster") and estimator._Booster is not None:
@@ -908,7 +944,9 @@ def get_expected_features(model, metadata=None):
                     )
                     return feature_names
                 except Exception as e:
-                    logger.debug("Failed to extract features from LightGBM _Booster: %s", e)
+                    logger.debug(
+                        "Failed to extract features from LightGBM _Booster: %s", e
+                    )
 
     # 4) Final fallback to metadata (even if mismatched) to preserve previous behavior
     if metadata_features is not None:

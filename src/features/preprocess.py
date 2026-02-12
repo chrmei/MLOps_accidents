@@ -127,7 +127,7 @@ def align_features_with_model(
     # Reorder and select only expected features
     # reindex will select only the columns in expected_features, dropping extras
     df_features = df_features.reindex(columns=expected_features, fill_value=fill_value)
-    
+
     # Double-check: ensure we only have expected features
     assert set(df_features.columns) == set(expected_features), (
         f"Feature alignment failed: got {len(df_features.columns)} features, "
