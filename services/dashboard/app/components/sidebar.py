@@ -1,12 +1,22 @@
 """Sidebar navigation and logout."""
 
 import streamlit as st
+from urllib.parse import urlparse, urlunparse
 
 from ..auth import USER_KEY, is_admin
 from ..utils.session import clear_session
 from ..config import BROWSER_BASE_URL
 
 PAGE_KEY = "dashboard_page"
+
+
+def _get_monitoring_url(port: int) -> str:
+    """Construct monitoring service URL from BROWSER_BASE_URL and port."""
+    parsed = urlparse(BROWSER_BASE_URL)
+    # Replace port if it exists, otherwise add new port
+    netloc = parsed.netloc.split(':')[0]  # Remove existing port if any
+    new_parsed = parsed._replace(netloc=f"{netloc}:{port}")
+    return urlunparse(new_parsed)
 
 
 def render_sidebar():
@@ -32,6 +42,16 @@ def render_sidebar():
         st.sidebar.link_button(
             "Ml Flow",
             "https://dagshub.com/chrmei/MLOps_accidents.mlflow/#/experiments/0/runs?searchFilter=&orderByKey=metrics.%60f1_score%60&orderByAsc=false&startTime=ALL&lifecycleFilter=Active&modelVersionFilter=All+Runs&datasetsFilter=W10%3D",
+            use_container_width=True,
+        )
+        st.sidebar.link_button(
+            "Prometheus",
+            _get_monitoring_url(9090),
+            use_container_width=True,
+        )
+        st.sidebar.link_button(
+            "Grafana",
+            _get_monitoring_url(3000),
             use_container_width=True,
         )
         if st.sidebar.button(
