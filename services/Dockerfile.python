@@ -22,6 +22,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 # Union of system deps needed by any service (curl, git, libgomp1 for lightgbm)
 RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
     curl \
     git \
     libgomp1 \

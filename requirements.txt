@@ -14,7 +14,7 @@ pathlib
 scikit-learn>=1.4.2,<1.5
 imbalanced-learn==0.14.0
 joblib
-xgboost==3.1.2
+xgboost==3.0.5
 lightgbm
 matplotlib
 seaborn
