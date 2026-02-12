@@ -9,46 +9,70 @@ def render():
     st.markdown("**Duration: 2-3 minutes** | **Presenter: Rafael**")
     st.markdown("---")
 
-    st.header("Prometheus")
-    st.markdown(
-        """
-        - Metrics collection from Predict Service:
-            - General metrics:
-                - API request total
-                - API request duration
-            - On evaluation endpoint:
-                - Model accuracy
-                - Model precision
-                - Model recall
-                - Model F1 score
-                - Column drift share (from Evidently)
-        - Node exporter for system metrics
-        """
-    )
-
-    st.header("Grafana")
-
-    col1, col2 = st.columns([2,1])
+    col1, col2 = st.columns(2)
     with col1:
-        st.subheader("Dashboards")
-        st.image("/app/app/assets/images/grafana_api_dashboard.png", caption="Example API Dashboard in Grafana")
-        st.image("/app/app/assets/images/grafana_model_dashboard.png", caption="Example Model Dashboard in Grafana")
-        st.image("/app/app/assets/images/grafana_resource_dashboard.png", caption="Example Resource Dashboard in Grafana")
-
+        st.header("Prometheus")
     with col2:
-        st.subheader("Alerts")
+        st.header("Grafana")
+
+    col1, col2 = st.columns(2)
+    with col1:
+        st.subheader("API metrics")
         st.markdown(
             """
-            - **Service Health** Alerts:
-                - Predict Service Down
-            - **Model and Data Quality** Alerts:
-                - High Column Drift Share
+            - API request total
+            - API request duration
             """
         )
+    with col2:
+        st.image("/app/app/assets/images/grafana_api_dashboard.png", caption="Example API Dashboard in Grafana")
 
-    st.header("Health Checks")
-    st.markdown(
-        """
-        All services expose `/health` endpoints.
-        """
-    )
+    col1, col2 = st.columns(2)
+    with col1:
+        st.subheader("Model and Data Quality Metrics")
+        st.markdown(
+            """
+            - Model accuracy
+            - Model precision
+            - Model recall
+            - Model F1 score
+            - Column drift share (from Evidently)
+            """
+        )
+    with col2:
+        st.image("/app/app/assets/images/grafana_model_dashboard.png", caption="Example Model Dashboard in Grafana")
+
+    col1, col2 = st.columns(2)
+    with col1:
+        st.subheader("Resource Metrics")
+        st.markdown(
+            """ 
+            - Exposed by Node Exporter
+            """
+        )
+    with col2:
+        st.image("/app/app/assets/images/grafana_resource_dashboard.png", caption="Example Resource Dashboard in Grafana")
+
+
+    col1, col2 = st.columns(2)
+    with col1:
+        st.header("Alerts")
+        st.subheader("🚨 **Service Health** Alerts")
+        st.markdown(
+            """
+            - Predict Service Down
+            """
+        )
+        st.subheader("🔍 **Model and Data Quality** Alerts")
+        st.markdown(
+            """
+            - High Column Drift Share
+            """
+        )
+    with col2:
+        st.header("Health Checks")
+        st.markdown(
+            """
+            All services expose `/health` endpoints.
+            """
+        )
