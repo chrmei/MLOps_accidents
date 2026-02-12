@@ -1,4 +1,4 @@
-.PHONY: help install install-dev sync lock update clean lint format type-check test test-cov test-api test-api-cov test-api-service test-api-service-cov test-api-auth test-api-data test-api-train test-api-predict run-import run-preprocess run-features run-train run-train-grid run-predict run-predict-file workflow-all workflow-data workflow-ml dvc-init dvc-setup-remote dvc-status dvc-push dvc-pull dvc-repro docker-up docker-down docker-build-services docker-logs docker-status docker-health docker-restart docker-dev docker-build docker-build-dev docker-build-train docker-dvc-pull docker-clean docker-test docker-test-build docker-test-run docker-test-cov docker-test-service k3s-create-secrets k3s-build-images k3s-build-test-image k3s-import-images k3s-import-test-image k3s-deploy k3s-deploy-predict-only k3s-destroy k3s-shutdown k3s-status k3s-scale-predict k3s-restart k3s-reload-model k3s-logs-predict k3s-logs k3s-get-node-ip k3s-test k3s-test-run k3s-test-cov k3s-test-service k3s-test-logs k3s-test-clean
+.PHONY: help install install-dev sync lock update clean lint format type-check test test-cov test-api test-api-cov test-api-service test-api-service-cov test-api-auth test-api-data test-api-train test-api-predict run-import run-preprocess run-features run-train run-train-grid run-predict run-predict-file workflow-all workflow-data workflow-ml dvc-init dvc-setup-remote dvc-status dvc-push dvc-pull dvc-repro docker-up docker-down docker-build-services docker-build-services-no-cache docker-logs docker-status docker-health docker-restart docker-dev docker-build docker-build-dev docker-build-train docker-dvc-pull docker-clean docker-test docker-test-build docker-test-run docker-test-cov docker-test-service k3s-create-secrets k3s-build-images k3s-build-test-image k3s-import-images k3s-import-test-image k3s-deploy k3s-deploy-predict-only k3s-destroy k3s-shutdown k3s-status k3s-scale-predict k3s-restart k3s-reload-model k3s-logs-predict k3s-logs k3s-get-node-ip k3s-test k3s-test-run k3s-test-cov k3s-test-service k3s-test-logs k3s-test-clean
 
 # Load .env file if it exists (cross-platform with GNU Make)
 # Note: On Windows, use Git Bash, WSL, or another Unix-like environment
@@ -285,10 +285,11 @@ dvc-repro: ## Reproduce DVC pipeline
 # Microservices Docker commands
 # =============================================================================
 
-docker-up: ## Start all microservices (nginx, auth, data, train, predict)
+docker-up: ## Start all microservices (nginx, auth, data, train, predict) - excludes test services
 	@echo "Starting microservices..."
 	docker compose up -d postgres node-exporter geocode predict weather prometheus data auth train grafana docs nginx streamlit
 	@echo "Services started! API available at http://localhost"
+	@echo "Note: Test services (sim-traffic, sim-eval) are excluded. Use 'make docker-test' to include them."
 
 docker-up-all: ## Start all microservices including test service
 	@echo "Starting all microservices including test..."
@@ -302,7 +303,12 @@ docker-down: ## Stop all microservices
 
 docker-build-services: ## Build all microservice images
 	@echo "Building microservice images..."
-	docker compose build nginx auth data train predict prometheus grafana node-exporter
+	docker compose build
+	@echo "All microservice images built!"
+
+docker-build-services-no-cache: ## Build all microservice images
+	@echo "Building microservice images..."
+	docker compose build --no-cache
 	@echo "All microservice images built!"
 
 docker-build-test: ## Build test service image
@@ -348,11 +354,11 @@ docker-restart: ## Restart all microservices
 # Compose files: base + test overrides (relaxed auth rate limits and nginx for tests)
 COMPOSE_TEST := -f docker-compose.yml -f docker-compose.test.yml
 
-docker-test: ## Run API tests in Docker (starts services if needed, runs tests, stops test container)
+docker-test: ## Run API tests in Docker (starts services if needed, runs tests, stops test container) - includes sim-traffic and sim-eval
 	@echo "Running API tests in Docker..."
 	@echo "Building and starting services if not running..."
-	@docker compose $(COMPOSE_TEST) build nginx auth data train predict
-	@docker compose $(COMPOSE_TEST) up -d nginx auth data train predict || true
+	@docker compose $(COMPOSE_TEST) build nginx auth data train predict sim-traffic sim-eval
+	@docker compose $(COMPOSE_TEST) up -d nginx auth data train predict sim-traffic sim-eval || true
 	@echo "Waiting for services to be healthy..."
 	@sleep 5
 	@echo "Running tests..."

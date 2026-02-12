@@ -554,64 +554,61 @@ def render_prediction_form(
         
         # Determine default lum value (prioritize session state, then weather_data, then default)
         # Session state is the source of truth after weather data is fetched
+        lum_key = f"{KEY_PREFIX}lum"
         default_lum = DEFAULTS["lum"]
-        if f"{KEY_PREFIX}lum" in st.session_state:
-            session_lum = st.session_state[f"{KEY_PREFIX}lum"]
+        
+        # Get value from session state if exists, otherwise use weather data or default
+        if lum_key in st.session_state:
+            session_lum = st.session_state[lum_key]
             # Validate that session state value is a valid option
             if session_lum in lum_options_list:
                 default_lum = session_lum
             else:
-                # Invalid value, reset to default
-                st.session_state[f"{KEY_PREFIX}lum"] = default_lum
+                # Invalid value, will be reset by widget
+                default_lum = DEFAULTS["lum"]
         elif weather_data and weather_data.get("lum") is not None:
             weather_lum = weather_data["lum"]
             # Validate that weather data value is a valid option
             if weather_lum in lum_options_list:
                 default_lum = weather_lum
-                # Update session state for consistency
-                st.session_state[f"{KEY_PREFIX}lum"] = default_lum
         
         # Determine default atm value (prioritize session state, then weather_data, then default)
+        atm_key = f"{KEY_PREFIX}atm"
         default_atm = DEFAULTS["atm"]
-        if f"{KEY_PREFIX}atm" in st.session_state:
-            session_atm = st.session_state[f"{KEY_PREFIX}atm"]
+        
+        # Get value from session state if exists, otherwise use weather data or default
+        if atm_key in st.session_state:
+            session_atm = st.session_state[atm_key]
             # Validate that session state value is a valid option
             if session_atm in atm_options_list:
                 default_atm = session_atm
             else:
-                # Invalid value, reset to default
-                st.session_state[f"{KEY_PREFIX}atm"] = default_atm
+                # Invalid value, will be reset by widget
+                default_atm = DEFAULTS["atm"]
         elif weather_data and weather_data.get("atm") is not None:
             weather_atm = weather_data["atm"]
             # Validate that weather data value is a valid option
             if weather_atm in atm_options_list:
                 default_atm = weather_atm
-                # Update session state for consistency
-                st.session_state[f"{KEY_PREFIX}atm"] = default_atm
         
-        # Find index for selectbox (only used if session state doesn't have the value)
+        # Calculate index for selectbox (only used if session state doesn't have the value)
+        # Don't set session state before widget creation - let Streamlit handle it automatically
         lum_index = lum_options_list.index(default_lum) if default_lum in lum_options_list else 0
         atm_index = atm_options_list.index(default_atm) if default_atm in atm_options_list else 0
-        
-        # Ensure session state is set with valid values (needed for selectbox with key)
-        if f"{KEY_PREFIX}lum" not in st.session_state or st.session_state[f"{KEY_PREFIX}lum"] not in lum_options_list:
-            st.session_state[f"{KEY_PREFIX}lum"] = default_lum
-        if f"{KEY_PREFIX}atm" not in st.session_state or st.session_state[f"{KEY_PREFIX}atm"] not in atm_options_list:
-            st.session_state[f"{KEY_PREFIX}atm"] = default_atm
         
         lum = st.selectbox(
             "Lighting Conditions",
             options=lum_options_list,
             format_func=lambda x: LUM_OPTIONS[x],
             index=lum_index,
-            key=f"{KEY_PREFIX}lum"
+            key=lum_key
         )
         atm = st.selectbox(
             "Atmospheric Conditions",
             options=atm_options_list,
             format_func=lambda x: ATM_OPTIONS[x],
             index=atm_index,
-            key=f"{KEY_PREFIX}atm"
+            key=atm_key
         )
     
     # ========== VICTIM INFORMATION & VEHICLE INFORMATION ==========
@@ -619,87 +616,101 @@ def render_prediction_form(
     with v1:
         st.markdown("### 👤 Victim Information")
         catu_options_list = get_sorted_options(CATU_OPTIONS)
+        catu_key = f"{KEY_PREFIX}catu"
+        default_catu = DEFAULTS["catu"]
+        if catu_key in st.session_state and st.session_state[catu_key] in catu_options_list:
+            default_catu = st.session_state[catu_key]
+        catu_index = catu_options_list.index(default_catu) if default_catu in catu_options_list else 0
         catu = st.selectbox(
             "Victim Category",
             options=catu_options_list,
             format_func=lambda x: CATU_OPTIONS[x],
-            index=catu_options_list.index(DEFAULTS["catu"]) if DEFAULTS["catu"] in catu_options_list else 0,
-            key=f"{KEY_PREFIX}catu",
+            index=catu_index,
+            key=catu_key,
             help="Category of the victim involved in the accident"
         )
+        sexe_key = f"{KEY_PREFIX}sexe"
+        default_sexe = DEFAULTS["sexe"]
+        if sexe_key in st.session_state and st.session_state[sexe_key] in [1, 2]:
+            default_sexe = st.session_state[sexe_key]
+        sexe_index = 0 if default_sexe == 1 else 1
         sexe = st.selectbox(
             "Gender",
             options=[1, 2],
             format_func=lambda x: "Male" if x == 1 else "Female",
-            index=0 if DEFAULTS["sexe"] == 1 else 1,
-            key=f"{KEY_PREFIX}sexe"
+            index=sexe_index,
+            key=sexe_key
         )
         an_nais = st.number_input(
             "Birth Year",
-            value=DEFAULTS["an_nais"],
+            value=st.session_state.get(f"{KEY_PREFIX}an_nais", DEFAULTS["an_nais"]),
             min_value=1920,
             max_value=2010,
             key=f"{KEY_PREFIX}an_nais",
             help="Year of birth of the victim"
         )
         place_options_list = get_sorted_options(PLACE_OPTIONS)
+        place_key = f"{KEY_PREFIX}place"
         default_place = DEFAULTS["place"]
-        if f"{KEY_PREFIX}place" in st.session_state:
-            session_place = st.session_state[f"{KEY_PREFIX}place"]
+        
+        # Get value from session state if exists and valid, otherwise use default
+        if place_key in st.session_state:
+            session_place = st.session_state[place_key]
             if session_place in place_options_list:
                 default_place = session_place
-            else:
-                st.session_state[f"{KEY_PREFIX}place"] = default_place
-        if f"{KEY_PREFIX}place" not in st.session_state or st.session_state[f"{KEY_PREFIX}place"] not in place_options_list:
-            st.session_state[f"{KEY_PREFIX}place"] = default_place
+        
+        # Calculate index - don't set session state before widget creation
         place_index = place_options_list.index(default_place) if default_place in place_options_list else 0
         place = st.selectbox(
             "Position in Vehicle",
             options=place_options_list,
             format_func=lambda x: PLACE_OPTIONS[x],
             index=place_index,
-            key=f"{KEY_PREFIX}place",
+            key=place_key,
             help="Position of the victim in the vehicle"
         )
         secu1_options_list = get_sorted_options(SECU1_OPTIONS)
+        secu1_key = f"{KEY_PREFIX}secu1"
         default_secu1 = int(DEFAULTS["secu1"])
-        if f"{KEY_PREFIX}secu1" in st.session_state:
-            session_secu1 = st.session_state[f"{KEY_PREFIX}secu1"]
+        
+        # Get value from session state if exists and valid, otherwise use default
+        if secu1_key in st.session_state:
+            session_secu1 = st.session_state[secu1_key]
             if session_secu1 in secu1_options_list:
                 default_secu1 = session_secu1
-            else:
-                st.session_state[f"{KEY_PREFIX}secu1"] = default_secu1
-        if f"{KEY_PREFIX}secu1" not in st.session_state or st.session_state[f"{KEY_PREFIX}secu1"] not in secu1_options_list:
-            st.session_state[f"{KEY_PREFIX}secu1"] = default_secu1
+        
+        # Calculate index - don't set session state before widget creation
         secu1_index = secu1_options_list.index(default_secu1) if default_secu1 in secu1_options_list else 0
         secu1 = st.selectbox(
             "Safety Equipment",
             options=secu1_options_list,
             format_func=lambda x: SECU1_OPTIONS[x],
             index=secu1_index,
-            key=f"{KEY_PREFIX}secu1",
+            key=secu1_key,
             help="Type of safety equipment used"
         )
         locp_options_list = get_sorted_options(LOCP_OPTIONS)
+        locp_key = f"{KEY_PREFIX}locp"
         default_locp = DEFAULTS["locp"]
-        if f"{KEY_PREFIX}locp" in st.session_state:
-            session_locp = st.session_state[f"{KEY_PREFIX}locp"]
+        
+        # Get value from session state if exists and valid, otherwise use default
+        if locp_key in st.session_state:
+            session_locp = st.session_state[locp_key]
             if session_locp in locp_options_list:
                 default_locp = session_locp
-            else:
-                st.session_state[f"{KEY_PREFIX}locp"] = default_locp
-        if f"{KEY_PREFIX}locp" not in st.session_state or st.session_state[f"{KEY_PREFIX}locp"] not in locp_options_list:
-            st.session_state[f"{KEY_PREFIX}locp"] = default_locp
+        
+        # Calculate index - don't set session state before widget creation
         locp_index = locp_options_list.index(default_locp) if default_locp in locp_options_list else 0
         locp = st.selectbox(
             "Pedestrian Location",
             options=locp_options_list,
             format_func=lambda x: LOCP_OPTIONS[x],
             index=locp_index,
-            key=f"{KEY_PREFIX}locp",
+            key=locp_key,
             help="Location of pedestrian if applicable"
         )
         actp_options_list = get_sorted_options(ACTP_OPTIONS)
+        actp_key = f"{KEY_PREFIX}actp"
         # Handle default value conversion: 0 stays 0, -1 stays -1, but need to handle if default is A/B equivalent
         default_actp = DEFAULTS["actp"]
         # Convert numeric defaults to proper types for ACTP_OPTIONS
@@ -714,140 +725,149 @@ def render_prediction_form(
         else:
             default_actp = 0  # Fallback to 0
         
-        if f"{KEY_PREFIX}actp" in st.session_state:
-            session_actp = st.session_state[f"{KEY_PREFIX}actp"]
+        # Get value from session state if exists and valid, otherwise use default
+        if actp_key in st.session_state:
+            session_actp = st.session_state[actp_key]
             if session_actp in actp_options_list:
                 default_actp = session_actp
-            else:
-                st.session_state[f"{KEY_PREFIX}actp"] = default_actp
-        if f"{KEY_PREFIX}actp" not in st.session_state or st.session_state[f"{KEY_PREFIX}actp"] not in actp_options_list:
-            st.session_state[f"{KEY_PREFIX}actp"] = default_actp
+        
+        # Calculate index - don't set session state before widget creation
         actp_index = actp_options_list.index(default_actp) if default_actp in actp_options_list else 0
         actp_selected = st.selectbox(
             "Pedestrian Action",
             options=actp_options_list,
             format_func=lambda x: ACTP_OPTIONS[x],
             index=actp_index,
-            key=f"{KEY_PREFIX}actp",
+            key=actp_key,
             help="Action of pedestrian"
         )
         etatp_options_list = get_sorted_options(ETATP_OPTIONS)
+        etatp_key = f"{KEY_PREFIX}etatp"
         default_etatp = DEFAULTS["etatp"]
-        if f"{KEY_PREFIX}etatp" in st.session_state:
-            session_etatp = st.session_state[f"{KEY_PREFIX}etatp"]
+        
+        # Get value from session state if exists and valid, otherwise use default
+        if etatp_key in st.session_state:
+            session_etatp = st.session_state[etatp_key]
             if session_etatp in etatp_options_list:
                 default_etatp = session_etatp
-            else:
-                st.session_state[f"{KEY_PREFIX}etatp"] = default_etatp
-        if f"{KEY_PREFIX}etatp" not in st.session_state or st.session_state[f"{KEY_PREFIX}etatp"] not in etatp_options_list:
-            st.session_state[f"{KEY_PREFIX}etatp"] = default_etatp
+        
+        # Calculate index - don't set session state before widget creation
         etatp_index = etatp_options_list.index(default_etatp) if default_etatp in etatp_options_list else 0
         etatp = st.selectbox(
             "Pedestrian State",
             options=etatp_options_list,
             format_func=lambda x: ETATP_OPTIONS[x],
             index=etatp_index,
-            key=f"{KEY_PREFIX}etatp",
+            key=etatp_key,
             help="State of pedestrian"
         )
     
     with v2:
         st.markdown("### 🚗 Vehicle Information")
         catv_options_list = get_sorted_options(CATV_OPTIONS)
+        catv_key = f"{KEY_PREFIX}catv"
         default_catv = DEFAULTS["catv"]
-        if f"{KEY_PREFIX}catv" in st.session_state:
-            session_catv = st.session_state[f"{KEY_PREFIX}catv"]
+        
+        # Get value from session state if exists and valid, otherwise use default
+        if catv_key in st.session_state:
+            session_catv = st.session_state[catv_key]
             if session_catv in catv_options_list:
                 default_catv = session_catv
-            else:
-                st.session_state[f"{KEY_PREFIX}catv"] = default_catv
-        if f"{KEY_PREFIX}catv" not in st.session_state or st.session_state[f"{KEY_PREFIX}catv"] not in catv_options_list:
-            st.session_state[f"{KEY_PREFIX}catv"] = default_catv
+        
+        # Calculate index - don't set session state before widget creation
         catv_index = catv_options_list.index(default_catv) if default_catv in catv_options_list else 0
         catv = st.selectbox(
             "Vehicle Category",
             options=catv_options_list,
             format_func=lambda x: CATV_OPTIONS[x],
             index=catv_index,
-            key=f"{KEY_PREFIX}catv",
+            key=catv_key,
             help="Category of vehicle"
         )
         motor_options_list = get_sorted_options(MOTOR_OPTIONS)
+        motor_key = f"{KEY_PREFIX}motor"
         default_motor = DEFAULTS["motor"]
-        if f"{KEY_PREFIX}motor" in st.session_state:
-            session_motor = st.session_state[f"{KEY_PREFIX}motor"]
+        
+        # Get value from session state if exists and valid, otherwise use default
+        if motor_key in st.session_state:
+            session_motor = st.session_state[motor_key]
             if session_motor in motor_options_list:
                 default_motor = session_motor
-            else:
-                st.session_state[f"{KEY_PREFIX}motor"] = default_motor
-        if f"{KEY_PREFIX}motor" not in st.session_state or st.session_state[f"{KEY_PREFIX}motor"] not in motor_options_list:
-            st.session_state[f"{KEY_PREFIX}motor"] = default_motor
+        
+        # Calculate index - don't set session state before widget creation
         motor_index = motor_options_list.index(default_motor) if default_motor in motor_options_list else 0
         motor = st.selectbox(
             "Motor Type",
             options=motor_options_list,
             format_func=lambda x: MOTOR_OPTIONS[x],
             index=motor_index,
-            key=f"{KEY_PREFIX}motor",
+            key=motor_key,
             help="This variable describes the propulsion type of the vehicle. It is essential for distinguishing between silent vehicles (Electric/Hybrid), traditional combustion engines, and new mobilities."
         )
         obsm_options_list = get_sorted_options(OBSM_OPTIONS)
+        obsm_key = f"{KEY_PREFIX}obsm"
         default_obsm = DEFAULTS["obsm"]
-        if f"{KEY_PREFIX}obsm" in st.session_state:
-            session_obsm = st.session_state[f"{KEY_PREFIX}obsm"]
+        
+        # Get value from session state if exists and valid, otherwise use default
+        if obsm_key in st.session_state:
+            session_obsm = st.session_state[obsm_key]
             if session_obsm in obsm_options_list:
                 default_obsm = session_obsm
-            else:
-                st.session_state[f"{KEY_PREFIX}obsm"] = default_obsm
-        if f"{KEY_PREFIX}obsm" not in st.session_state or st.session_state[f"{KEY_PREFIX}obsm"] not in obsm_options_list:
-            st.session_state[f"{KEY_PREFIX}obsm"] = default_obsm
+        
+        # Calculate index - don't set session state before widget creation
         obsm_index = obsm_options_list.index(default_obsm) if default_obsm in obsm_options_list else 0
         obsm = st.selectbox(
             "Obstacle Marker",
             options=obsm_options_list,
             format_func=lambda x: OBSM_OPTIONS[x],
             index=obsm_index,
-            key=f"{KEY_PREFIX}obsm",
+            key=obsm_key,
             help="This variable describes the moving object that the vehicle hit."
         )
         obs_options_list = get_sorted_options(OBS_OPTIONS)
+        obs_key = f"{KEY_PREFIX}obs"
         default_obs = DEFAULTS["obs"]
-        if f"{KEY_PREFIX}obs" in st.session_state:
-            session_obs = st.session_state[f"{KEY_PREFIX}obs"]
+        
+        # Get value from session state if exists and valid, otherwise use default
+        if obs_key in st.session_state:
+            session_obs = st.session_state[obs_key]
             if session_obs in obs_options_list:
                 default_obs = session_obs
-            else:
-                st.session_state[f"{KEY_PREFIX}obs"] = default_obs
-        if f"{KEY_PREFIX}obs" not in st.session_state or st.session_state[f"{KEY_PREFIX}obs"] not in obs_options_list:
-            st.session_state[f"{KEY_PREFIX}obs"] = default_obs
+        
+        # Calculate index - don't set session state before widget creation
         obs_index = obs_options_list.index(default_obs) if default_obs in obs_options_list else 0
         obs = st.selectbox(
             "Obstacle",
             options=obs_options_list,
             format_func=lambda x: OBS_OPTIONS[x],
             index=obs_index,
-            key=f"{KEY_PREFIX}obs",
+            key=obs_key,
             help="This variable describes the stationary object that the vehicle hit. This is critical for \"Solo Vehicle\" accidents (single-vehicle accidents)."
         )
         nb_victim = st.number_input(
             "Number of Victims",
-            value=DEFAULTS["nb_victim"],
+            value=st.session_state.get(f"{KEY_PREFIX}nb_victim", DEFAULTS["nb_victim"]),
             min_value=0,
             key=f"{KEY_PREFIX}nb_victim"
         )
         nb_vehicules = st.number_input(
             "Number of Vehicles",
-            value=DEFAULTS["nb_vehicules"],
+            value=st.session_state.get(f"{KEY_PREFIX}nb_vehicules", DEFAULTS["nb_vehicules"]),
             min_value=0,
             key=f"{KEY_PREFIX}nb_vehicules"
         )
         situ_options_list = get_sorted_options(SITU_OPTIONS)
+        situ_key = f"{KEY_PREFIX}situ"
+        default_situ = DEFAULTS["situ"]
+        if situ_key in st.session_state and st.session_state[situ_key] in situ_options_list:
+            default_situ = st.session_state[situ_key]
+        situ_index = situ_options_list.index(default_situ) if default_situ in situ_options_list else 0
         situ = st.selectbox(
             "Situation",
             options=situ_options_list,
             format_func=lambda x: SITU_OPTIONS[x],
-            index=situ_options_list.index(DEFAULTS["situ"]) if DEFAULTS["situ"] in situ_options_list else 0,
-            key=f"{KEY_PREFIX}situ"
+            index=situ_index,
+            key=situ_key
         )
     
     # ========== ROAD/LOCATION CHARACTERISTICS & ROAD SURFACE & INFRASTRUCTURE ==========
@@ -855,64 +875,89 @@ def render_prediction_form(
     with r1:
         st.markdown("### 🛣️ Road & Location Characteristics")
         catr_options_list = get_sorted_options(CATR_OPTIONS)
+        catr_key = f"{KEY_PREFIX}catr"
+        default_catr = DEFAULTS["catr"]
+        if catr_key in st.session_state and st.session_state[catr_key] in catr_options_list:
+            default_catr = st.session_state[catr_key]
+        catr_index = catr_options_list.index(default_catr) if default_catr in catr_options_list else 0
         catr = st.selectbox(
             "Road Category",
             options=catr_options_list,
             format_func=lambda x: CATR_OPTIONS[x],
-            index=catr_options_list.index(DEFAULTS["catr"]) if DEFAULTS["catr"] in catr_options_list else 0,
-            key=f"{KEY_PREFIX}catr"
+            index=catr_index,
+            key=catr_key
         )
         circ_options_list = get_sorted_options(CIRC_OPTIONS)
+        circ_key = f"{KEY_PREFIX}circ"
+        default_circ = DEFAULTS["circ"]
+        if circ_key in st.session_state and st.session_state[circ_key] in circ_options_list:
+            default_circ = st.session_state[circ_key]
+        circ_index = circ_options_list.index(default_circ) if default_circ in circ_options_list else 0
         circ = st.selectbox(
             "Traffic Direction",
             options=circ_options_list,
             format_func=lambda x: CIRC_OPTIONS[x],
-            index=circ_options_list.index(DEFAULTS["circ"]) if DEFAULTS["circ"] in circ_options_list else 0,
-            key=f"{KEY_PREFIX}circ"
+            index=circ_index,
+            key=circ_key
         )
         vma = st.number_input(
             "Speed Limit (km/h)",
-            value=DEFAULTS["vma"],
+            value=st.session_state.get(f"{KEY_PREFIX}vma", DEFAULTS["vma"]),
             min_value=0,
             max_value=150,
             key=f"{KEY_PREFIX}vma",
             help="Maximum authorized speed in km/h"
         )
         vosp_options_list = get_sorted_options(VOSP_OPTIONS)
+        vosp_key = f"{KEY_PREFIX}vosp"
+        default_vosp = DEFAULTS["vosp"]
+        if vosp_key in st.session_state and st.session_state[vosp_key] in vosp_options_list:
+            default_vosp = st.session_state[vosp_key]
+        vosp_index = vosp_options_list.index(default_vosp) if default_vosp in vosp_options_list else 0
         vosp = st.selectbox(
             "Special Lane",
             options=vosp_options_list,
             format_func=lambda x: VOSP_OPTIONS[x],
-            index=vosp_options_list.index(DEFAULTS["vosp"]) if DEFAULTS["vosp"] in vosp_options_list else 0,
-            key=f"{KEY_PREFIX}vosp"
+            index=vosp_index,
+            key=vosp_key
         )
         v1 = st.number_input(
             "Traffic Lane",
-            value=DEFAULTS["v1"],
+            value=st.session_state.get(f"{KEY_PREFIX}v1", DEFAULTS["v1"]),
             min_value=-1,
             max_value=9,
             key=f"{KEY_PREFIX}v1",
             help="Number of traffic lanes (-1: Unknown, 0: Not specified, 1-9: Number of lanes)"
         )
         prof_options_list = get_sorted_options(PROF_OPTIONS)
+        prof_key = f"{KEY_PREFIX}prof"
+        default_prof = DEFAULTS["prof"]
+        if prof_key in st.session_state and st.session_state[prof_key] in prof_options_list:
+            default_prof = st.session_state[prof_key]
+        prof_index = prof_options_list.index(default_prof) if default_prof in prof_options_list else 0
         prof = st.selectbox(
             "Road Profile",
             options=prof_options_list,
             format_func=lambda x: PROF_OPTIONS[x],
-            index=prof_options_list.index(DEFAULTS["prof"]) if DEFAULTS["prof"] in prof_options_list else 0,
-            key=f"{KEY_PREFIX}prof"
+            index=prof_index,
+            key=prof_key
         )
         plan_options_list = get_sorted_options(PLAN_OPTIONS)
+        plan_key = f"{KEY_PREFIX}plan"
+        default_plan = DEFAULTS["plan"]
+        if plan_key in st.session_state and st.session_state[plan_key] in plan_options_list:
+            default_plan = st.session_state[plan_key]
+        plan_index = plan_options_list.index(default_plan) if default_plan in plan_options_list else 0
         plan = st.selectbox(
             "Road Plan",
             options=plan_options_list,
             format_func=lambda x: PLAN_OPTIONS[x],
-            index=plan_options_list.index(DEFAULTS["plan"]) if DEFAULTS["plan"] in plan_options_list else 0,
-            key=f"{KEY_PREFIX}plan"
+            index=plan_index,
+            key=plan_key
         )
         larrout = st.number_input(
             "Road Width (meters)",
-            value=float(DEFAULTS["larrout"]),
+            value=st.session_state.get(f"{KEY_PREFIX}larrout", float(DEFAULTS["larrout"])),
             min_value=-1.0,
             max_value=50.0,
             step=0.1,
@@ -923,44 +968,64 @@ def render_prediction_form(
     with r2:
         st.markdown("### 🏗️ Road Surface & Infrastructure")
         agg_options_list = get_sorted_options(AGG_OPTIONS)
+        agg_key = f"{KEY_PREFIX}agg_"
+        default_agg = DEFAULTS["agg_"]
+        if agg_key in st.session_state and st.session_state[agg_key] in agg_options_list:
+            default_agg = st.session_state[agg_key]
+        agg_index = agg_options_list.index(default_agg) if default_agg in agg_options_list else 0
         agg_ = st.selectbox(
             "Urban Area",
             options=agg_options_list,
             format_func=lambda x: AGG_OPTIONS[x],
-            index=agg_options_list.index(DEFAULTS["agg_"]) if DEFAULTS["agg_"] in agg_options_list else 0,
-            key=f"{KEY_PREFIX}agg_"
+            index=agg_index,
+            key=agg_key
         )
         int_options_list = get_sorted_options(INT_OPTIONS)
+        int_key = f"{KEY_PREFIX}int"
+        default_int = DEFAULTS["int"]
+        if int_key in st.session_state and st.session_state[int_key] in int_options_list:
+            default_int = st.session_state[int_key]
+        int_index = int_options_list.index(default_int) if default_int in int_options_list else 0
         int_ = st.selectbox(
             "Intersection Type",
             options=int_options_list,
             format_func=lambda x: INT_OPTIONS[x],
-            index=int_options_list.index(DEFAULTS["int"]) if DEFAULTS["int"] in int_options_list else 0,
-            key=f"{KEY_PREFIX}int"
+            index=int_index,
+            key=int_key
         )
         surf_options_list = get_sorted_options(SURF_OPTIONS)
+        surf_key = f"{KEY_PREFIX}surf"
+        default_surf = DEFAULTS["surf"]
+        if surf_key in st.session_state and st.session_state[surf_key] in surf_options_list:
+            default_surf = st.session_state[surf_key]
+        surf_index = surf_options_list.index(default_surf) if default_surf in surf_options_list else 0
         surf = st.selectbox(
             "Road Surface Condition",
             options=surf_options_list,
             format_func=lambda x: SURF_OPTIONS[x],
-            index=surf_options_list.index(DEFAULTS["surf"]) if DEFAULTS["surf"] in surf_options_list else 0,
-            key=f"{KEY_PREFIX}surf"
+            index=surf_index,
+            key=surf_key
         )
         infra = st.number_input(
             "Infrastructure",
-            value=DEFAULTS["infra"],
+            value=st.session_state.get(f"{KEY_PREFIX}infra", DEFAULTS["infra"]),
             min_value=-1,
             max_value=9,
             key=f"{KEY_PREFIX}infra",
             help="Type of infrastructure (-1: Unknown, 0: None, 1-9: Various infrastructures)"
         )
         col_options_list = get_sorted_options(COL_OPTIONS)
+        col_key = f"{KEY_PREFIX}col"
+        default_col = DEFAULTS["col"]
+        if col_key in st.session_state and st.session_state[col_key] in col_options_list:
+            default_col = st.session_state[col_key]
+        col_index = col_options_list.index(default_col) if default_col in col_options_list else 0
         col = st.selectbox(
             "Collision Type",
             options=col_options_list,
             format_func=lambda x: COL_OPTIONS[x],
-            index=col_options_list.index(DEFAULTS["col"]) if DEFAULTS["col"] in col_options_list else 0,
-            key=f"{KEY_PREFIX}col"
+            index=col_index,
+            key=col_key
         )
     
     # actp_selected is already the correct value from dropdown (-1, 0, "A", or "B")
