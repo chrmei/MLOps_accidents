@@ -1,0 +1,37 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-datasources
+  namespace: mlops
+data:
+  datasources.yaml: |
+    apiVersion: 1
+
+    deleteDatasources:
+      - name: prometheus
+
+    datasources:
+      - name: prometheus
+        type: prometheus
+        uid: promID
+        access: proxy
+        url: http://prometheus:9090
+        isDefault: true
+        version: 1
+        editable: false
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboards
+  namespace: mlops
+data:
+  dashboards.yaml: |
+    apiVersion: 1
+
+    providers:
+      - name: monitoring
+        updateIntervalSeconds: 15
+        options:
+          path: /var/lib/grafana/dashboards

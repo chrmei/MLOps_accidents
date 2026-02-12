@@ -16,8 +16,8 @@ spec:
     spec:
       containers:
       - name: geocode
-        image: mlops-accidents:geocode_service
-        imagePullPolicy: Never
+        image: jaelevy/mlops_accidents-geocode:latest
+        imagePullPolicy: IfNotPresent
         env:
         - name: SERVICE_NAME
           value: "geocode-service"

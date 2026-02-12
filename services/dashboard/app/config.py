@@ -6,8 +6,8 @@ import os
 API_BASE_URL = os.environ.get("API_BASE_URL", "http://localhost:80").rstrip("/")
 
 # Browser-accessible base URL (for links opened in user's browser - uses localhost or external hostname)
-# Defaults to localhost, but can be overridden via BROWSER_BASE_URL env var
-BROWSER_BASE_URL = os.environ.get("BROWSER_BASE_URL", "http://localhost").rstrip("/")
+# Defaults to localhost:80 (nginx gateway), but can be overridden via BROWSER_BASE_URL env var
+BROWSER_BASE_URL = os.environ.get("BROWSER_BASE_URL", "http://localhost:80").rstrip("/")
 
 SESSION_EXPIRE_MINUTES = int(os.environ.get("SESSION_EXPIRE_MINUTES", "30"))
 API_TIMEOUT = 30.0

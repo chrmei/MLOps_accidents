@@ -16,8 +16,8 @@ spec:
     spec:
       containers:
       - name: nginx
-        image: mlops-accidents:nginx
-        imagePullPolicy: Never
+        image: jaelevy/mlops_accidents-nginx:latest
+        imagePullPolicy: IfNotPresent
         ports:
         - containerPort: 80
         volumeMounts:

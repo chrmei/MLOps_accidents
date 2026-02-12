@@ -1,0 +1,50 @@
+---
+# Job to run evaluation simulation against k3s-deployed services
+# Usage: kubectl apply -f 37-sim-eval-job.yaml -n mlops
+# Then: kubectl wait --for=condition=complete --timeout=600s job/sim-eval -n mlops
+# View logs: kubectl logs job/sim-eval -n mlops
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: sim-eval
+  namespace: mlops
+spec:
+  template:
+    spec:
+      containers:
+      - name: sim-eval
+        image: jaelevy/mlops_accidents-sim-eval:latest
+        imagePullPolicy: IfNotPresent
+        env:
+        - name: PYTHONUNBUFFERED
+          value: "1"
+        - name: ADMIN_USERNAME
+          valueFrom:
+            secretKeyRef:
+              name: mlops-secrets
+              key: ADMIN_USERNAME
+              optional: true
+        - name: ADMIN_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mlops-secrets
+              key: ADMIN_PASSWORD
+              optional: true
+        volumeMounts:
+        - name: data-volume
+          mountPath: /app/data
+          readOnly: true
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "500m"
+          limits:
+            memory: "1Gi"
+            cpu: "1000m"
+      volumes:
+      - name: data-volume
+        persistentVolumeClaim:
+          claimName: data-pvc
+      restartPolicy: Never
+  backoffLimit: 0
+  activeDeadlineSeconds: 600  # 10 minutes max runtime

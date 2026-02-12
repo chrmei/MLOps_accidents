@@ -16,8 +16,8 @@ spec:
     spec:
       containers:
       - name: data
-        image: mlops-accidents:data_service
-        imagePullPolicy: Never
+        image: jaelevy/mlops_accidents-data:latest
+        imagePullPolicy: IfNotPresent
         env:
         - name: SERVICE_NAME
           value: "data-service"

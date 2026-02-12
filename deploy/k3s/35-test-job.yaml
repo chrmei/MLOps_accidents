@@ -13,8 +13,8 @@ spec:
     spec:
       containers:
       - name: test
-        image: mlops-accidents:test_service
-        imagePullPolicy: Never
+        image: jaelevy/mlops_accidents-test:latest
+        imagePullPolicy: IfNotPresent
         command:
         - pytest
         args:

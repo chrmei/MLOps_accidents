@@ -16,8 +16,8 @@ spec:
     spec:
       containers:
       - name: docs
-        image: mlops-accidents:docs_service
-        imagePullPolicy: Never
+        image: jaelevy/mlops_accidents-docs:latest
+        imagePullPolicy: IfNotPresent
         env:
         - name: SERVICE_NAME
           value: "docs-service"

@@ -1,0 +1,50 @@
+---
+# Job to run traffic simulation against k3s-deployed services
+# Usage: kubectl apply -f 36-sim-traffic-job.yaml -n mlops
+# Then: kubectl wait --for=condition=complete --timeout=300s job/sim-traffic -n mlops
+# View logs: kubectl logs job/sim-traffic -n mlops
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: sim-traffic
+  namespace: mlops
+spec:
+  template:
+    spec:
+      containers:
+      - name: sim-traffic
+        image: jaelevy/mlops_accidents-sim-traffic:latest
+        imagePullPolicy: IfNotPresent
+        env:
+        - name: PYTHONUNBUFFERED
+          value: "1"
+        - name: ADMIN_USERNAME
+          valueFrom:
+            secretKeyRef:
+              name: mlops-secrets
+              key: ADMIN_USERNAME
+              optional: true
+        - name: ADMIN_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mlops-secrets
+              key: ADMIN_PASSWORD
+              optional: true
+        volumeMounts:
+        - name: data-volume
+          mountPath: /app/data
+          readOnly: true
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "500m"
+          limits:
+            memory: "512Mi"
+            cpu: "1000m"
+      volumes:
+      - name: data-volume
+        persistentVolumeClaim:
+          claimName: data-pvc
+      restartPolicy: Never
+  backoffLimit: 0
+  activeDeadlineSeconds: 600  # 10 minutes max runtime

@@ -21,8 +21,8 @@ spec:
     spec:
       containers:
       - name: predict
-        image: mlops-accidents:predict_service
-        imagePullPolicy: Never
+        image: jaelevy/mlops_accidents-predict:latest
+        imagePullPolicy: IfNotPresent
         env:
         - name: SERVICE_NAME
           value: "predict-service"
