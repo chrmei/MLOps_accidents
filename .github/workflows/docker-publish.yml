@@ -58,15 +58,15 @@ jobs:
             target: ""
             context: .
           - service: nginx
-            dockerfile: Dockerfile
+            dockerfile: services/nginx/Dockerfile
             target: ""
             context: ./services/nginx
           - service: sim-eval
-            dockerfile: Dockerfile
+            dockerfile: services/sim_eval_service/Dockerfile
             target: ""
             context: ./services/sim_eval_service
           - service: sim-traffic
-            dockerfile: Dockerfile
+            dockerfile: services/sim_traffic_service/Dockerfile
             target: ""
             context: ./services/sim_traffic_service
 
