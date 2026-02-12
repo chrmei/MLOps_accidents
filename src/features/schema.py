@@ -82,7 +82,7 @@ CANONICAL_INPUT_DEFAULTS: Dict[str, any] = {
 def get_canonical_input_features() -> List[str]:
     """
     Get the list of canonical input features.
-    
+
     Returns
     -------
     List[str]
@@ -94,7 +94,7 @@ def get_canonical_input_features() -> List[str]:
 def get_canonical_input_defaults() -> Dict[str, any]:
     """
     Get default values for optional canonical input features.
-    
+
     Returns
     -------
     Dict[str, any]
@@ -106,14 +106,14 @@ def get_canonical_input_defaults() -> Dict[str, any]:
 def validate_canonical_input(features: Dict[str, any]) -> Dict[str, any]:
     """
     Validate and normalize canonical input features.
-    
+
     Ensures all required features are present and fills in defaults for optional features.
-    
+
     Parameters
     ----------
     features : Dict[str, any]
         Input features dictionary
-        
+
     Returns
     -------
     Dict[str, any]
@@ -121,7 +121,7 @@ def validate_canonical_input(features: Dict[str, any]) -> Dict[str, any]:
     """
     validated = {}
     defaults = get_canonical_input_defaults()
-    
+
     # Add all canonical features with defaults
     for feature in CANONICAL_INPUT_FEATURES:
         if feature in features:
@@ -131,5 +131,5 @@ def validate_canonical_input(features: Dict[str, any]) -> Dict[str, any]:
         else:
             # Required feature missing - will raise error during preprocessing
             validated[feature] = None
-    
+
     return validated

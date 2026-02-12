@@ -72,7 +72,7 @@ def render_sidebar():
             st.link_button("OpenAPI", f"{BROWSER_BASE_URL}/openapi.json", use_container_width=True)
             st.link_button("redoc", f"{BROWSER_BASE_URL}/redoc", use_container_width=True)
         
-        # Presentation dropdown using expander
+        # Presentation dropdown using expander (similar to Documentation)
         with st.sidebar.expander("Presentation", expanded=False):
             if st.button("Introduction", key="pres_intro", use_container_width=True):
                 st.session_state[PAGE_KEY] = "presentation_intro"

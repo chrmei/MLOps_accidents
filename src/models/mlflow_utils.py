@@ -16,7 +16,6 @@ matplotlib.use("Agg")  # Use non-interactive backend
 import matplotlib.pyplot as plt
 import mlflow
 import mlflow.sklearn
-from mlflow.models import infer_signature
 import numpy as np
 import pandas as pd
 import seaborn as sns
@@ -330,7 +329,7 @@ def log_model_to_mlflow(
                     logger.info("MLflow signature inferred successfully")
                 except Exception as e:
                     logger.warning(f"Failed to infer MLflow signature: {e}")
-            
+
             # Log model with signature and input example
             model_info = mlflow.sklearn.log_model(
                 model,
@@ -339,7 +338,8 @@ def log_model_to_mlflow(
                 signature=signature,
                 input_example=input_example,
             )
-            
+            logger.info(f"Model logged to MLflow: {model_info}")
+
             # Get the version that was just created
             try:
                 from mlflow.tracking import MlflowClient
@@ -483,14 +483,20 @@ def log_model_to_mlflow(
                         and estimator.n_features_in_ is not None
                     ):
                         model_feature_count = int(estimator.n_features_in_)
-                    elif hasattr(estimator, "booster_") and estimator.booster_ is not None:
+                    elif (
+                        hasattr(estimator, "booster_")
+                        and estimator.booster_ is not None
+                    ):
                         booster = estimator.booster_
                         if hasattr(booster, "num_feature"):
                             try:
                                 model_feature_count = int(booster.num_feature())
                             except Exception:
                                 pass
-                    elif hasattr(estimator, "_Booster") and estimator._Booster is not None:
+                    elif (
+                        hasattr(estimator, "_Booster")
+                        and estimator._Booster is not None
+                    ):
                         booster = estimator._Booster
                         if hasattr(booster, "num_feature"):
                             try:
