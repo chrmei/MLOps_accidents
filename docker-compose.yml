@@ -370,6 +370,7 @@ services:
     container_name: mlops-dashboard
     environment:
       - API_BASE_URL=http://nginx:80
+      - BROWSER_BASE_URL=http://localhost:80
       - SESSION_EXPIRE_MINUTES=30
     ports:
       - "8501:8501"
