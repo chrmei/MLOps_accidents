@@ -498,31 +498,33 @@ def get_weather_conditions(
     """
     # Get timezone for coordinates
     timezone = get_timezone_from_coords(lat, lon)
-    
+
     # Ensure datetime is timezone-aware (using the datetime provided from dashboard)
     # This datetime will be used consistently for both solar and weather data fetching
     if current_datetime.tzinfo is None:
         current_datetime = current_datetime.replace(tzinfo=ZoneInfo(timezone))
     else:
         current_datetime = current_datetime.astimezone(ZoneInfo(timezone))
-    
+
     # Fetch solar data using the datetime from dashboard
     solar_data = fetch_solar_data(lat, lon, current_datetime.date())
-    
+
     # Fetch weather data using the datetime from dashboard
     weather_data = fetch_weather_data(lat, lon, current_datetime, timezone)
-    
+
     # Determine error message
     error = None
     if not weather_data:
         error = "Weather API unavailable, using solar data only"
     elif not solar_data:
         error = "Solar API unavailable, using weather data only"
-    
+
     # Determine conditions
     lum = determine_lighting_condition(solar_data, current_datetime, agg_, timezone)
-    atm = determine_atmospheric_condition(weather_data, solar_data, current_datetime, timezone)
-    
+    atm = determine_atmospheric_condition(
+        weather_data, solar_data, current_datetime, timezone
+    )
+
     return {
         "lum": lum,
         "atm": atm,
