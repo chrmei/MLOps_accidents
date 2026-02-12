@@ -1,0 +1,129 @@
+name: Docker Build and Publish
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+env:
+  REGISTRY: docker.io
+  IMAGE_PREFIX: jaelevy/mlops_accidents
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Python microservices from services/Dockerfile.python
+          - service: auth
+            dockerfile: services/Dockerfile.python
+            target: auth_service
+            context: .
+          - service: data
+            dockerfile: services/Dockerfile.python
+            target: data_service
+            context: .
+          - service: train
+            dockerfile: services/Dockerfile.python
+            target: train_service
+            context: .
+          - service: predict
+            dockerfile: services/Dockerfile.python
+            target: predict_service
+            context: .
+          - service: geocode
+            dockerfile: services/Dockerfile.python
+            target: geocode_service
+            context: .
+          - service: weather
+            dockerfile: services/Dockerfile.python
+            target: weather_service
+            context: .
+          - service: docs
+            dockerfile: services/Dockerfile.python
+            target: docs_service
+            context: .
+          # Standalone services
+          - service: dashboard
+            dockerfile: services/dashboard/Dockerfile
+            target: ""
+            context: .
+          - service: nginx
+            dockerfile: Dockerfile
+            target: ""
+            context: ./services/nginx
+          - service: sim-eval
+            dockerfile: Dockerfile
+            target: ""
+            context: ./services/sim_eval_service
+          - service: sim-traffic
+            dockerfile: Dockerfile
+            target: ""
+            context: ./services/sim_traffic_service
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Extract version from pyproject.toml
+      id: version
+      run: |
+        pip install tomli
+        VERSION=$(python -c "import tomli; f=open('pyproject.toml','rb'); data=tomli.load(f); print(data['project']['version'])")
+        echo "version=$VERSION" >> $GITHUB_OUTPUT
+        echo "tag=v$VERSION" >> $GITHUB_OUTPUT
+        # Extract major.minor for rolling tags
+        MAJOR_MINOR=$(echo "$VERSION" | cut -d. -f1,2)
+        echo "major_minor=$MAJOR_MINOR" >> $GITHUB_OUTPUT
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Log in to Docker Hub
+      if: github.event_name != 'pull_request'
+      uses: docker/login-action@v3
+      with:
+        username: ${{ secrets.DOCKERHUB_USERNAME }}
+        password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+    - name: Extract metadata (tags, labels) for Docker
+      id: meta
+      uses: docker/metadata-action@v5
+      with:
+        images: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-${{ matrix.service }}
+        tags: |
+          # Use version from pyproject.toml for main branch merges
+          type=raw,value=${{ steps.version.outputs.tag }},enable=${{ github.ref == 'refs/heads/main' }}
+          type=raw,value=${{ steps.version.outputs.major_minor }},enable=${{ github.ref == 'refs/heads/main' }}
+          # Semver tags when git tag is pushed
+          type=semver,pattern={{version}}
+          type=semver,pattern={{major}}.{{minor}}
+          # Latest tag for main branch
+          type=raw,value=latest,enable={{is_default_branch}}
+          # Branch and SHA tags for other branches
+          type=ref,event=branch
+          type=sha,prefix={{branch}}-
+
+    - name: Build and push Docker image
+      uses: docker/build-push-action@v5
+      with:
+        context: ${{ matrix.context }}
+        file: ${{ matrix.dockerfile }}
+        target: ${{ matrix.target }}
+        push: ${{ github.event_name != 'pull_request' }}
+        tags: ${{ steps.meta.outputs.tags }}
+        labels: ${{ steps.meta.outputs.labels }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+        platforms: linux/amd64,linux/arm64
+        build-args: |
+          BASE_IMAGE=python:3.11-slim
