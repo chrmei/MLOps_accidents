@@ -13,8 +13,8 @@ spec:
     spec:
       containers:
       - name: model-reload
-        image: mlops-accidents:predict_service
-        imagePullPolicy: Never
+        image: jaelevy/mlops_accidents-predict:latest
+        imagePullPolicy: IfNotPresent
         command:
         - /bin/bash
         - -c

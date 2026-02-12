@@ -16,8 +16,8 @@ spec:
     spec:
       containers:
       - name: train
-        image: mlops-accidents:train_service
-        imagePullPolicy: Never
+        image: jaelevy/mlops_accidents-train:latest
+        imagePullPolicy: IfNotPresent
         env:
         - name: SERVICE_NAME
           value: "train-service"

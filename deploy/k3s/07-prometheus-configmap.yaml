@@ -1,0 +1,27 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-config
+  namespace: mlops
+data:
+  prometheus.yml: |
+    global:
+      scrape_interval: 15s
+      evaluation_interval: 15s
+
+    rule_files:
+      - "rules/*.yml"
+
+    scrape_configs:
+      - job_name: prometheus
+        static_configs:
+          - targets: [prometheus:9090]
+
+      - job_name: predict
+        static_configs:
+          - targets: [predict:8003]
+
+      - job_name: node_exporter
+        static_configs:
+          - targets: [node-exporter:9100]

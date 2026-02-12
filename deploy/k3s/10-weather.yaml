@@ -16,8 +16,8 @@ spec:
     spec:
       containers:
       - name: weather
-        image: mlops-accidents:weather_service
-        imagePullPolicy: Never
+        image: jaelevy/mlops_accidents-weather:latest
+        imagePullPolicy: IfNotPresent
         env:
         - name: SERVICE_NAME
           value: "weather-service"

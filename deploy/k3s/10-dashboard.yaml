@@ -16,8 +16,8 @@ spec:
     spec:
       containers:
       - name: dashboard
-        image: mlops-accidents:dashboard
-        imagePullPolicy: Never
+        image: jaelevy/mlops_accidents-dashboard:latest
+        imagePullPolicy: IfNotPresent
         env:
         - name: API_BASE_URL
           value: "http://nginx:80"

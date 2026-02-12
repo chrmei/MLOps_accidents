@@ -1,4 +1,4 @@
-.PHONY: help install install-dev sync lock update clean lint format type-check test test-cov test-api test-api-cov test-api-service test-api-service-cov test-api-auth test-api-data test-api-train test-api-predict run-import run-preprocess run-features run-train run-train-grid run-predict run-predict-file workflow-all workflow-data workflow-ml dvc-init dvc-setup-remote dvc-status dvc-push dvc-pull dvc-repro docker-up docker-down docker-build-services docker-build-services-no-cache docker-logs docker-status docker-health docker-restart docker-dev docker-build docker-build-dev docker-build-train docker-dvc-pull docker-clean docker-test docker-test-build docker-test-run docker-test-cov docker-test-service k3s-create-secrets k3s-build-images k3s-build-test-image k3s-import-images k3s-import-test-image k3s-deploy k3s-deploy-predict-only k3s-destroy k3s-shutdown k3s-status k3s-scale-predict k3s-restart k3s-reload-model k3s-logs-predict k3s-logs k3s-get-node-ip k3s-test k3s-test-run k3s-test-cov k3s-test-service k3s-test-logs k3s-test-clean
+.PHONY: help install install-dev sync lock update clean lint format type-check test test-cov test-api test-api-cov test-api-service test-api-service-cov test-api-auth test-api-data test-api-train test-api-predict run-import run-preprocess run-features run-train run-train-grid run-predict run-predict-file workflow-all workflow-data workflow-ml dvc-init dvc-setup-remote dvc-status dvc-push dvc-pull dvc-repro docker-up docker-down docker-build-services docker-build-services-no-cache docker-logs docker-status docker-health docker-restart docker-dev docker-build docker-build-dev docker-build-train docker-dvc-pull docker-clean docker-test docker-test-build docker-test-run docker-test-cov docker-test-service k3s-create-secrets k3s-build-images k3s-build-test-images k3s-import-images k3s-import-test-images k3s-deploy k3s-deploy-predict-only k3s-destroy k3s-shutdown k3s-status k3s-scale-predict k3s-restart k3s-reload-model k3s-logs-predict k3s-logs k3s-get-node-ip k3s-test k3s-test-run k3s-test-cov k3s-test-service k3s-test-logs k3s-test-clean
 
 # Load .env file if it exists (cross-platform with GNU Make)
 # Note: On Windows, use Git Bash, WSL, or another Unix-like environment
@@ -459,10 +459,10 @@ k3s-build-images: ## Build all Docker images for k3s deployment
 	docker compose build nginx auth data train predict geocode weather docs streamlit
 	@echo "All images built successfully!"
 
-k3s-build-test-image: ## Build test service Docker image for k3s
-	@echo "Building test service image..."
-	docker compose build test
-	@echo "Test service image built successfully!"
+k3s-build-test-images: ## Build test service Docker images for k3s (test, sim-traffic, sim-eval)
+	@echo "Building test service images..."
+	docker compose build test sim-traffic sim-eval
+	@echo "Test service images built successfully!"
 
 k3s-import-images: k3s-check ## Import built images into k3s (local strategy, no registry)
 	@echo "Importing images into k3s..."
@@ -484,15 +484,19 @@ k3s-import-images: k3s-check ## Import built images into k3s (local strategy, no
 		(echo "Error: Failed to import images. Ensure images are built and k3s is running." && exit 1)
 	@echo "Images imported successfully!"
 
-k3s-import-test-image: k3s-check ## Import test service image into k3s
-	@echo "Importing test service image into k3s..."
-	@echo "Tagging test image for k3s..."
+k3s-import-test-images: k3s-check ## Import test service images into k3s (test, sim-traffic, sim-eval)
+	@echo "Importing test service images into k3s..."
+	@echo "Tagging test images for k3s..."
 	@docker tag mlops_accidents-test:latest mlops-accidents:test_service 2>/dev/null || \
-		(echo "Error: Test image not found. Build it first with 'make k3s-build-test-image'" && exit 1)
-	@echo "Saving and importing test image..."
-	@docker save mlops-accidents:test_service 2>/dev/null | sudo k3s ctr images import - || \
-		(echo "Error: Failed to import test image. Ensure image is built and k3s is running." && exit 1)
-	@echo "Test image imported successfully!"
+		(echo "Error: Test image not found. Build it first with 'make k3s-build-test-images'" && exit 1)
+	@docker tag mlops_accidents-sim-traffic:latest mlops-accidents:sim_traffic_service 2>/dev/null || \
+		(echo "Error: sim-traffic image not found. Build it first with 'make k3s-build-test-images'" && exit 1)
+	@docker tag mlops_accidents-sim-eval:latest mlops-accidents:sim_eval_service 2>/dev/null || \
+		(echo "Error: sim-eval image not found. Build it first with 'make k3s-build-test-images'" && exit 1)
+	@echo "Saving and importing test images..."
+	@docker save mlops-accidents:test_service mlops-accidents:sim_traffic_service mlops-accidents:sim_eval_service 2>/dev/null | sudo k3s ctr images import - || \
+		(echo "Error: Failed to import test images. Ensure images are built and k3s is running." && exit 1)
+	@echo "Test images imported successfully!"
 
 k3s-deploy: k3s-check ## Deploy all services to k3s (namespace, configmap, PVCs, services)
 	@echo "Deploying to k3s..."
@@ -502,6 +506,11 @@ k3s-deploy: k3s-check ## Deploy all services to k3s (namespace, configmap, PVCs,
 	@echo "   (This reads from .env file, which is gitignored and never committed)"
 	@kubectl apply -f $(K3S_DIR)/03-pvc.yaml
 	@kubectl apply -f $(K3S_DIR)/05-postgres.yaml
+	@kubectl apply -f $(K3S_DIR)/07-prometheus-configmap.yaml
+	@kubectl apply -f $(K3S_DIR)/07-prometheus.yaml
+	@kubectl apply -f $(K3S_DIR)/08-grafana-configmap.yaml
+	@kubectl apply -f $(K3S_DIR)/08-grafana.yaml
+	@kubectl apply -f $(K3S_DIR)/09-node-exporter.yaml
 	@kubectl apply -f $(K3S_DIR)/10-auth.yaml
 	@kubectl apply -f $(K3S_DIR)/10-data.yaml
 	@kubectl apply -f $(K3S_DIR)/10-train.yaml
@@ -562,6 +571,9 @@ k3s-restart: k3s-check ## Safely restart all services after rebuilding images (i
 	@$(MAKE) k3s-import-images
 	@echo ""
 	@echo "Step 2: Rolling restart of all deployments (zero-downtime)..."
+	@echo "Restarting monitoring services..."
+	@kubectl rollout restart deployment/prometheus -n $(K3S_NAMESPACE) || true
+	@kubectl rollout restart deployment/grafana -n $(K3S_NAMESPACE) || true
 	@echo "Restarting backend services..."
 	@kubectl rollout restart deployment/auth -n $(K3S_NAMESPACE)
 	@kubectl rollout restart deployment/data -n $(K3S_NAMESPACE)
@@ -575,6 +587,10 @@ k3s-restart: k3s-check ## Safely restart all services after rebuilding images (i
 	@kubectl rollout restart deployment/nginx -n $(K3S_NAMESPACE)
 	@echo ""
 	@echo "Step 3: Waiting for all rollouts to complete..."
+	@echo "Waiting for prometheus..."
+	@kubectl rollout status deployment/prometheus -n $(K3S_NAMESPACE) --timeout=300s || true
+	@echo "Waiting for grafana..."
+	@kubectl rollout status deployment/grafana -n $(K3S_NAMESPACE) --timeout=300s || true
 	@echo "Waiting for auth..."
 	@kubectl rollout status deployment/auth -n $(K3S_NAMESPACE) --timeout=300s || true
 	@echo "Waiting for data..."
@@ -635,14 +651,14 @@ k3s-get-node-ip: ## Get node IP for accessing NodePort service
 	@echo ""
 	@echo "Access API at: http://<node-ip>:30080"
 
-k3s-test: k3s-check ## Run API tests in k3s (builds/imports test image, creates job, waits for completion)
+k3s-test: k3s-check ## Run API tests in k3s (builds/imports test images, creates job, waits for completion)
 	@echo "Running API tests in k3s..."
 	@echo ""
-	@echo "Step 1: Building test service image..."
-	@$(MAKE) k3s-build-test-image
+	@echo "Step 1: Building test service images..."
+	@$(MAKE) k3s-build-test-images
 	@echo ""
-	@echo "Step 2: Importing test image into k3s..."
-	@$(MAKE) k3s-import-test-image
+	@echo "Step 2: Importing test images into k3s..."
+	@$(MAKE) k3s-import-test-images
 	@echo ""
 	@echo "Step 3: Checking if services are running..."
 	@kubectl get pods -n $(K3S_NAMESPACE) -l app=nginx --no-headers 2>/dev/null | grep -q Running || \
@@ -706,11 +722,11 @@ k3s-test-run: k3s-check ## Run API tests in k3s with custom command (usage: make
 k3s-test-cov: k3s-check ## Run API tests in k3s with coverage report
 	@echo "Running API tests with coverage in k3s..."
 	@echo ""
-	@echo "Step 1: Building test service image..."
-	@$(MAKE) k3s-build-test-image
+	@echo "Step 1: Building test service images..."
+	@$(MAKE) k3s-build-test-images
 	@echo ""
-	@echo "Step 2: Importing test image into k3s..."
-	@$(MAKE) k3s-import-test-image
+	@echo "Step 2: Importing test images into k3s..."
+	@$(MAKE) k3s-import-test-images
 	@echo ""
 	@echo "Step 3: Checking if services are running..."
 	@kubectl get pods -n $(K3S_NAMESPACE) -l app=nginx --no-headers 2>/dev/null | grep -q Running || \
