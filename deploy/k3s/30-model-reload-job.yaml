@@ -1,0 +1,148 @@
+---
+# Job to reload model from MLflow into model-cache PVC
+# Run this job before rolling restart of predict deployment to update model
+# Usage: kubectl apply -f 30-model-reload-job.yaml -n mlops
+# Then: kubectl rollout restart deployment/predict -n mlops
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: model-reload
+  namespace: mlops
+spec:
+  template:
+    spec:
+      containers:
+      - name: model-reload
+        image: mlops-accidents:predict_service
+        imagePullPolicy: Never
+        command:
+        - /bin/bash
+        - -c
+        - |
+          set -e
+          echo "Starting model reload job..."
+          
+          # Set up environment
+          export MODEL_CACHE_DIR=/app/model-cache
+          export MODEL_CONFIG_PATH=src/config/model_config.yaml
+          export MLFLOW_TRACKING_URI=${MLFLOW_TRACKING_URI}
+          export MLFLOW_TRACKING_USERNAME=${MLFLOW_TRACKING_USERNAME}
+          export MLFLOW_TRACKING_PASSWORD=${MLFLOW_TRACKING_PASSWORD}
+          
+          # Create cache directory
+          mkdir -p ${MODEL_CACHE_DIR}
+          
+          # Load best production model from MLflow
+          echo "Loading best production model from MLflow..."
+          python3 << 'PYTHON_SCRIPT'
+          import os
+          import sys
+          import pickle
+          import logging
+          from pathlib import Path
+          
+          logging.basicConfig(level=logging.INFO)
+          logger = logging.getLogger(__name__)
+          
+          # Add src to path
+          sys.path.insert(0, '/app')
+          
+          from src.models.predict_model import load_best_production_model
+          
+          MODEL_CACHE_DIR = os.getenv('MODEL_CACHE_DIR', '/app/model-cache')
+          MODEL_CONFIG_PATH = os.getenv('MODEL_CONFIG_PATH', 'src/config/model_config.yaml')
+          
+          try:
+              # Load model from MLflow
+              result = load_best_production_model(config_path=MODEL_CONFIG_PATH)
+              
+              # Handle both old (4-tuple) and new (5-tuple) return formats
+              if len(result) == 5:
+                  model, label_encoders, metadata, model_type, model_uri = result
+              else:
+                  model, label_encoders, metadata, model_type = result
+                  model_uri = None
+              
+              logger.info(f"Loaded model: {model_type} from MLflow")
+              
+              # Save to cache directory
+              cache_path = Path(MODEL_CACHE_DIR)
+              cache_path.mkdir(parents=True, exist_ok=True)
+              
+              # Save model
+              model_file = cache_path / 'model.pkl'
+              with open(model_file, 'wb') as f:
+                  pickle.dump(model, f)
+              logger.info(f"Saved model to {model_file}")
+              
+              # Save label encoders
+              encoders_file = cache_path / 'label_encoders.pkl'
+              with open(encoders_file, 'wb') as f:
+                  pickle.dump(label_encoders, f)
+              logger.info(f"Saved label encoders to {encoders_file}")
+              
+              # Save metadata
+              metadata_file = cache_path / 'metadata.pkl'
+              with open(metadata_file, 'wb') as f:
+                  pickle.dump(metadata, f)
+              logger.info(f"Saved metadata to {metadata_file}")
+              
+              # Save model type
+              model_type_file = cache_path / 'model_type.txt'
+              with open(model_type_file, 'w') as f:
+                  f.write(model_type)
+              logger.info(f"Saved model type to {model_type_file}")
+              
+              if model_uri:
+                  uri_file = cache_path / 'model_uri.txt'
+                  with open(uri_file, 'w') as f:
+                      f.write(model_uri)
+                  logger.info(f"Saved model URI to {uri_file}")
+              
+              logger.info("Model reload completed successfully!")
+              
+          except Exception as e:
+              logger.error(f"Failed to reload model: {e}", exc_info=True)
+              sys.exit(1)
+          PYTHON_SCRIPT
+          
+          echo "Model reload job completed successfully!"
+        env:
+        - name: MODEL_CACHE_DIR
+          valueFrom:
+            configMapKeyRef:
+              name: mlops-config
+              key: MODEL_CACHE_DIR
+        - name: MLFLOW_TRACKING_URI
+          valueFrom:
+            secretKeyRef:
+              name: mlops-secrets
+              key: MLFLOW_TRACKING_URI
+        - name: MLFLOW_TRACKING_USERNAME
+          valueFrom:
+            secretKeyRef:
+              name: mlops-secrets
+              key: MLFLOW_TRACKING_USERNAME
+        - name: MLFLOW_TRACKING_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mlops-secrets
+              key: MLFLOW_TRACKING_PASSWORD
+        - name: PYTHONUNBUFFERED
+          value: "1"
+        volumeMounts:
+        - name: model-cache-volume
+          mountPath: /app/model-cache
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "500m"
+          limits:
+            memory: "512Mi"
+            cpu: "1000m"
+      volumes:
+      - name: model-cache-volume
+        persistentVolumeClaim:
+          claimName: model-cache-pvc
+      restartPolicy: Never
+  backoffLimit: 3

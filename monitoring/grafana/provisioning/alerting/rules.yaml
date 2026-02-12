@@ -1,0 +1,123 @@
+apiVersion: 1
+groups:
+  - orgId: 1
+    name: Health Check
+    folder: Service Health Rules
+    interval: 1m
+    rules:
+      - uid: bfcpxdtv1m1vke
+        title: Predict Service Down
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: promID
+            model:
+              editorMode: builder
+              expr: up{job="predict"}
+              instant: true
+              intervalMs: 1000
+              legendFormat: __auto
+              maxDataPoints: 43200
+              range: false
+              refId: A
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              conditions:
+                  - evaluator:
+                      params:
+                          - 0
+                      type: eq
+                    operator:
+                      type: and
+                    query:
+                      params:
+                          - C
+                    reducer:
+                      params: []
+                      type: last
+                    type: query
+              datasource:
+                  type: __expr__
+                  uid: __expr__
+              expression: A
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: C
+              type: threshold
+        dashboardUid: ""
+        panelId: 0
+        noDataState: NoData
+        execErrState: Error
+        for: 1m
+        annotations:
+          description: The  job 'predict' has been DOWN for more than 1 minute.
+          summary: The Predict API is unreachable.
+        labels:
+          job: predict
+          severity: critical
+        isPaused: false
+        notification_settings:
+          receiver: grafana-default-email
+  - orgId: 1
+    name: Model and Data Quality
+    folder: Model and Data Quality Rules
+    interval: 1m
+    rules:
+      - uid: afcy74guxjpc0c
+        title: High Column Drift Share
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: promID
+            model:
+              editorMode: builder
+              expr: column_drift_share
+              instant: true
+              intervalMs: 1000
+              legendFormat: __auto
+              maxDataPoints: 43200
+              range: false
+              refId: A
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              conditions:
+                  - evaluator:
+                      params:
+                          - 0.5
+                      type: gt
+                    operator:
+                      type: and
+                    query:
+                      params:
+                          - C
+                    reducer:
+                      params: []
+                      type: last
+                    type: query
+              datasource:
+                  type: __expr__
+                  uid: __expr__
+              expression: A
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: C
+              type: threshold
+        noDataState: NoData
+        execErrState: Error
+        for: 1m
+        annotations:
+          description: More than half of the features have a drift in their values with respect to the reference data. That might explain a decrease of the model quality
+          summary: The Column Drift Share is high since the last evaluation
+        labels:
+          severity: high
+        isPaused: false
+        notification_settings:
+          receiver: grafana-default-email

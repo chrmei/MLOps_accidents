@@ -456,6 +456,106 @@ services:
     profiles:
       - dvc
 
+  # ===========================================================================
+  # Monitoring Service (Prometheus + Grafana)
+  # ===========================================================================
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: mlops-prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
+      - '--web.console.templates=/usr/share/prometheus/consoles'
+    depends_on:
+      - node-exporter
+    networks:
+      - mlops-network
+    restart: unless-stopped
+  
+  grafana:
+    image: grafana/grafana:latest
+    container_name: mlops-grafana
+    environment:
+      - GF_SECURITY_ADMIN_USER=${ADMIN_USERNAME:-admin}
+      - GF_SECURITY_ADMIN_PASSWORD=${ADMIN_PASSWORD:-CHANGE_ME_ADMIN_PASSWORD}
+      - GF_SECURITY_ADMIN_EMAIL=${ADMIN_EMAIL:-admin@your-domain.com}
+    ports:
+      - "3000:3000"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/grafana/provisioning/datasources:/etc/grafana/provisioning/datasources:ro
+      - ./monitoring/grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./monitoring/grafana/provisioning/alerting:/etc/grafana/provisioning/alerting:ro
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    depends_on:
+      - prometheus
+    networks:
+      - mlops-network
+    restart: unless-stopped
+
+  node-exporter:
+    image: prom/node-exporter:latest
+    container_name: mlops-node-exporter
+    ports:
+      - "9100:9100"
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    command:
+      - '--path.procfs=/host/proc'
+      - '--path.sysfs=/host/sys'
+      - '--path.rootfs=/rootfs'
+      - '--collector.filesystem.ignored-mount-points=^/(dev|proc|sys|var/lib/docker/.+|var/run/docker/netns/.+)'
+    networks:
+      - mlops-network
+    restart: unless-stopped
+
+  # ===========================================================================
+  # Simulation Service
+  # ===========================================================================
+  sim-eval:
+    build:
+      context: ./services/sim_eval_service
+      dockerfile: Dockerfile
+    container_name: mlops-sim-eval-service
+    environment:
+      - ADMIN_USERNAME=${ADMIN_USERNAME:-admin}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD:-admin}
+    volumes:
+      - ./data:/app/data:ro
+    depends_on:
+      predict:
+        condition: service_healthy
+      auth:
+        condition: service_healthy
+    networks:
+      - mlops-network
+  
+  sim-traffic:
+    build:
+      context: ./services/sim_traffic_service
+      dockerfile: Dockerfile
+    container_name: mlops-sim-traffic-service
+    environment:
+      - ADMIN_USERNAME=${ADMIN_USERNAME:-admin}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD:-admin}
+    volumes:
+      - ./data:/app/data:ro
+    depends_on:
+      predict:
+        condition: service_healthy
+      auth:
+        condition: service_healthy
+    networks:
+      - mlops-network
+
 # =============================================================================
 # Networks
 # =============================================================================
@@ -470,3 +570,7 @@ networks:
 volumes:
   postgres_data:
     name: mlops-postgres-data
+  prometheus_data:
+    name: mlops-prometheus-data
+  grafana_data:
+    name: mlops-grafana-data

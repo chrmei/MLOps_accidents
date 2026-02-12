@@ -6,7 +6,7 @@ This module provides reusable preprocessing functions for inference,
 ensuring consistency with the training pipeline.
 """
 import logging
-from typing import Dict, Optional, Any
+from typing import Any, Dict, List, Optional, Union
 
 import pandas as pd
 
@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 
 def preprocess_for_inference(
-    features: Dict,
+    features: Union[Dict[str, Any], List[Dict[str, Any]]],
     label_encoders: Optional[Dict] = None,
     apply_cyclic_encoding: Optional[bool] = None,
     apply_interactions: Optional[bool] = None,
@@ -25,10 +25,10 @@ def preprocess_for_inference(
 ) -> pd.DataFrame:
     """
     Preprocess input features for model inference.
-    
+
     This is the main preprocessing function that should be used for inference.
     It applies the same feature engineering pipeline used during training.
-    
+
     Parameters
     ----------
     features : dict
@@ -46,7 +46,7 @@ def preprocess_for_inference(
     metadata : dict, optional
         Model metadata containing feature engineering configuration.
         If provided, will be used to determine preprocessing settings.
-        
+
     Returns
     -------
     pd.DataFrame
@@ -59,12 +59,12 @@ def preprocess_for_inference(
             apply_cyclic_encoding = metadata.get("apply_cyclic_encoding", True)
         if apply_interactions is None:
             apply_interactions = metadata.get("apply_interactions", True)
-        
+
         # Log feature engineering version if available
         fe_version = metadata.get("feature_engineering_version")
         if fe_version:
             logger.info(f"Using feature engineering version: {fe_version}")
-        
+
         uses_grouped_features = metadata.get("uses_grouped_features", False)
         if uses_grouped_features:
             logger.info("Model uses grouped features - grouping will be applied")
@@ -74,10 +74,10 @@ def preprocess_for_inference(
             apply_cyclic_encoding = True
         if apply_interactions is None:
             apply_interactions = True
-    
+
     # Prepare input for feature engineering
     df_interim = prepare_input_for_feature_engineering(features)
-    
+
     # Apply feature engineering pipeline
     df_features, _ = build_features(
         df_interim,
@@ -86,7 +86,7 @@ def preprocess_for_inference(
         label_encoders=label_encoders,
         model_type=model_type,
     )
-    
+
     return df_features
 
 
@@ -95,7 +95,7 @@ def align_features_with_model(
 ) -> pd.DataFrame:
     """
     Align feature DataFrame with model's expected feature order and names.
-    
+
     Parameters
     ----------
     df_features : pd.DataFrame
@@ -104,7 +104,7 @@ def align_features_with_model(
         List of feature names expected by the model
     fill_value : float
         Value to use for missing features
-        
+
     Returns
     -------
     pd.DataFrame
@@ -117,15 +117,21 @@ def align_features_with_model(
         )
         for feat in missing_features:
             df_features[feat] = fill_value
-    
+
     extra_features = set(df_features.columns) - set(expected_features)
     if extra_features:
-        logger.warning(
-            f"Extra features ({len(extra_features)}) will be dropped: {list(extra_features)[:10]}..."
+        logger.info(
+            f"Dropping {len(extra_features)} extra features: {list(extra_features)[:10]}..."
         )
-    
+
     # Reorder and select only expected features
+    # reindex will select only the columns in expected_features, dropping extras
     df_features = df_features.reindex(columns=expected_features, fill_value=fill_value)
     
-    return df_features
+    # Double-check: ensure we only have expected features
+    assert set(df_features.columns) == set(expected_features), (
+        f"Feature alignment failed: got {len(df_features.columns)} features, "
+        f"expected {len(expected_features)}"
+    )
 
+    return df_features

@@ -106,6 +106,7 @@ feature_engineering:
 # Paths and directories
 paths:
   features: "data/preprocessed/features.csv"
+  interim: "data/preprocessed/interim_dataset.csv"  # Canonical input dataset (before feature engineering)
   model_output: "models/trained_model.joblib"
   metrics_dir: "data/metrics"
   label_encoders: "models/label_encoders.joblib"
