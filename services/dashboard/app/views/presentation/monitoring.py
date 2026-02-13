@@ -6,7 +6,7 @@ import streamlit as st
 def render():
     """Render Monitoring & Observability page."""
     st.title("Monitoring & Observability")
-    st.markdown("**Duration: 2-3 minutes** | **Presenter: Rafael**")
+    st.markdown("**Presenter: Rafael**")
     st.markdown("---")
 
     col1, col2 = st.columns(2)

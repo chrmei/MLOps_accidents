@@ -11,7 +11,7 @@ def yellow_tag(text):
 def render():
     """Render Conclusion & Future Work page."""
     st.title("Conclusion & Future Work")
-    st.markdown("**Duration: 1-2 minutes** | **Presenter: Rafael**")
+    st.markdown("**Presenter: Rafael**")
     st.markdown("---")
 
     st.header("Achievements")
@@ -20,14 +20,17 @@ def render():
         - Production-ready {green_tag("ML pipeline")} with {green_tag("versioning")}
         - {green_tag("User Interface")} with {green_tag("Role Based Access")}
         - {green_tag("Monitoring")} and {green_tag("Alerts")}
-        - DevOps practices with {green_tag("CI/CD")} pipelines
+        - DevOps practices with {green_tag("CI/CD")} pipelines (Testing, Linting, Security, Docker Image Building and Dockerhub Publishing)
+        - {green_tag("Caching")} of model within predict service
         """, unsafe_allow_html=True)
 
     st.header("Future Enhancements")
     st.markdown(f"""
         - {yellow_tag("K3s")}/{yellow_tag("Kubernetes")} deployment for better scalability and management
         - {yellow_tag("Evidently AI")} integration for data and model drift reporting
-        - Enhanced evaluation and alerting procedure
-        - Enhanced CI/CD pipelines
-        - Production optimizations like {yellow_tag("scaling")} and {yellow_tag("caching")}
+        - Enhanced {yellow_tag("evaluation")} and alerting procedure
+        - {yellow_tag("More Data")} - import more data from official French government website
         """, unsafe_allow_html=True)
+    
+    st.markdown("---")
+    st.markdown("**GitHub Repository:** https://github.com/chrmei/MLOps_accidents")

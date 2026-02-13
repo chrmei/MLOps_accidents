@@ -6,7 +6,7 @@ import streamlit as st
 def render():
     """Render DevOps & Automation page."""
     st.title("DevOps & Automation")
-    st.markdown("**Duration: 1-2 minutes**")
+    st.markdown("**Presenter: Surya**")
     st.markdown("---")
 
     st.header("CI/CD")
