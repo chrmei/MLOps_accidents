@@ -2,23 +2,52 @@
 # Train Service Dockerfile
 # =============================================================================
 # Handles model training and MLflow integration
+# Multi-stage build to reduce image size
 # =============================================================================
 
-FROM python:3.11-slim AS base
+# -----------------------------------------------------------------------------
+# Builder stage: Install dependencies with build tools
+# -----------------------------------------------------------------------------
+FROM python:3.11-slim AS builder
 
 LABEL maintainer="MLOps Team"
-LABEL description="Model training and registry service"
+LABEL description="Model training and registry service - Builder stage"
 
-# Set environment variables
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1
 
-# Install system dependencies
+# Install build dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential gcc g++ git \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Install Python dependencies
+COPY requirements.txt pyproject.toml setup.py README.md ./
+COPY src /app/src
+RUN pip install --upgrade pip && \
+    pip install --user --no-cache-dir -r requirements.txt
+
+# -----------------------------------------------------------------------------
+# Runtime stage: Copy only installed packages, no build tools
+# -----------------------------------------------------------------------------
+FROM python:3.11-slim AS runtime
+
+LABEL maintainer="MLOps Team"
+LABEL description="Model training and registry service"
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PATH=/root/.local/bin:$PATH
+
+# Install only runtime system dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
-    git \
     libgomp1 \
     && rm -rf /var/lib/apt/lists/*
 
@@ -26,21 +55,20 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN useradd --create-home --shell /bin/bash mlops
 WORKDIR /app
 
-# Install Python dependencies
-# Copy files needed for package installation first
-COPY requirements.txt pyproject.toml setup.py README.md ./
+# Copy installed Python packages from builder
+COPY --from=builder /root/.local /root/.local
+
+# Copy application files
+COPY pyproject.toml setup.py README.md ./
 COPY src /app/src
-RUN pip install --upgrade pip && \
-    pip install -r requirements.txt
-
-# Copy common module
 COPY services/common /app/services/common
-
-# Copy service code
 COPY services/train_service /app/services/train_service
 
-# Change ownership to non-root user
-RUN chown -R mlops:mlops /app
+# Clean Python bytecode and change ownership
+RUN find /app -type d -name __pycache__ -exec rm -r {} + 2>/dev/null || true \
+    && find /app -type f -name "*.pyc" -delete \
+    && chown -R mlops:mlops /app
+
 USER mlops
 
 # Expose port

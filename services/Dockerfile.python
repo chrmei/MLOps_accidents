@@ -8,10 +8,10 @@
 # =============================================================================
 
 # -----------------------------------------------------------------------------
-# Base: Python, system deps, external pip packages only (no -e .)
+# Builder: Install external pip packages with build tools
 # Rebuilds only when requirements.txt changes.
 # -----------------------------------------------------------------------------
-FROM python:3.11-slim AS base
+FROM python:3.11-slim AS builder
 
 LABEL maintainer="MLOps Team"
 
@@ -20,15 +20,14 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1
 
-# Union of system deps needed by any service (curl, git, libgomp1 for lightgbm)
+# Install build dependencies (will be removed in runtime stage)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
-    curl \
+    gcc \
+    g++ \
     git \
-    libgomp1 \
     && rm -rf /var/lib/apt/lists/*
 
-RUN useradd --create-home --shell /bin/bash mlops
 WORKDIR /app
 
 # Install only external deps (exclude -e .) so this layer caches when requirements.txt is unchanged
@@ -36,7 +35,33 @@ COPY requirements.txt ./
 RUN --mount=type=cache,target=/root/.cache/pip \
     grep -v '^-e' requirements.txt > /tmp/requirements.txt && \
     pip install --upgrade pip && \
-    pip install -r /tmp/requirements.txt
+    pip install --user --no-cache-dir -r /tmp/requirements.txt
+
+# -----------------------------------------------------------------------------
+# Base: Runtime stage with only runtime dependencies
+# Copies installed packages from builder, no build tools
+# -----------------------------------------------------------------------------
+FROM python:3.11-slim AS base
+
+LABEL maintainer="MLOps Team"
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PATH=/root/.local/bin:$PATH
+
+# Install only runtime system dependencies (curl for health checks, libgomp1 for lightgbm)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    libgomp1 \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN useradd --create-home --shell /bin/bash mlops
+WORKDIR /app
+
+# Copy installed Python packages from builder stage
+COPY --from=builder /root/.local /root/.local
 
 # -----------------------------------------------------------------------------
 # Auth Service
@@ -46,7 +71,16 @@ COPY pyproject.toml setup.py README.md ./
 COPY src /app/src
 COPY services/common /app/services/common
 COPY services/auth_service /app/services/auth_service
-RUN pip install -e . && chown -R mlops:mlops /app
+# Temporarily install build tools for editable install, then remove them
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential gcc g++ git \
+    && pip install -e . \
+    && apt-get purge -y build-essential gcc g++ git \
+    && apt-get autoremove -y \
+    && rm -rf /var/lib/apt/lists/* \
+    && find /app -type d -name __pycache__ -exec rm -r {} + 2>/dev/null || true \
+    && find /app -type f -name "*.pyc" -delete \
+    && chown -R mlops:mlops /app
 USER mlops
 EXPOSE 8004
 HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
@@ -61,7 +95,16 @@ COPY pyproject.toml setup.py README.md ./
 COPY src /app/src
 COPY services/common /app/services/common
 COPY services/data_service /app/services/data_service
-RUN pip install -e . && chown -R mlops:mlops /app
+# Temporarily install build tools for editable install, then remove them
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential gcc g++ git \
+    && pip install -e . \
+    && apt-get purge -y build-essential gcc g++ git \
+    && apt-get autoremove -y \
+    && rm -rf /var/lib/apt/lists/* \
+    && find /app -type d -name __pycache__ -exec rm -r {} + 2>/dev/null || true \
+    && find /app -type f -name "*.pyc" -delete \
+    && chown -R mlops:mlops /app
 USER mlops
 EXPOSE 8001
 HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
@@ -76,7 +119,16 @@ COPY pyproject.toml setup.py README.md ./
 COPY src /app/src
 COPY services/common /app/services/common
 COPY services/train_service /app/services/train_service
-RUN pip install -e . && chown -R mlops:mlops /app
+# Temporarily install build tools for editable install, then remove them
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential gcc g++ git \
+    && pip install -e . \
+    && apt-get purge -y build-essential gcc g++ git \
+    && apt-get autoremove -y \
+    && rm -rf /var/lib/apt/lists/* \
+    && find /app -type d -name __pycache__ -exec rm -r {} + 2>/dev/null || true \
+    && find /app -type f -name "*.pyc" -delete \
+    && chown -R mlops:mlops /app
 USER mlops
 EXPOSE 8002
 HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
@@ -91,7 +143,16 @@ COPY pyproject.toml setup.py README.md ./
 COPY src /app/src
 COPY services/common /app/services/common
 COPY services/predict_service /app/services/predict_service
-RUN pip install -e . && chown -R mlops:mlops /app
+# Temporarily install build tools for editable install, then remove them
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential gcc g++ git \
+    && pip install -e . \
+    && apt-get purge -y build-essential gcc g++ git \
+    && apt-get autoremove -y \
+    && rm -rf /var/lib/apt/lists/* \
+    && find /app -type d -name __pycache__ -exec rm -r {} + 2>/dev/null || true \
+    && find /app -type f -name "*.pyc" -delete \
+    && chown -R mlops:mlops /app
 USER mlops
 EXPOSE 8003
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
@@ -106,7 +167,16 @@ COPY pyproject.toml setup.py README.md ./
 COPY src /app/src
 COPY services/common /app/services/common
 COPY services/geocode_service /app/services/geocode_service
-RUN pip install -e . && chown -R mlops:mlops /app
+# Temporarily install build tools for editable install, then remove them
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential gcc g++ git \
+    && pip install -e . \
+    && apt-get purge -y build-essential gcc g++ git \
+    && apt-get autoremove -y \
+    && rm -rf /var/lib/apt/lists/* \
+    && find /app -type d -name __pycache__ -exec rm -r {} + 2>/dev/null || true \
+    && find /app -type f -name "*.pyc" -delete \
+    && chown -R mlops:mlops /app
 USER mlops
 EXPOSE 8005
 HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
@@ -121,7 +191,16 @@ COPY pyproject.toml setup.py README.md ./
 COPY src /app/src
 COPY services/common /app/services/common
 COPY services/weather_service /app/services/weather_service
-RUN pip install -e . && chown -R mlops:mlops /app
+# Temporarily install build tools for editable install, then remove them
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential gcc g++ git \
+    && pip install -e . \
+    && apt-get purge -y build-essential gcc g++ git \
+    && apt-get autoremove -y \
+    && rm -rf /var/lib/apt/lists/* \
+    && find /app -type d -name __pycache__ -exec rm -r {} + 2>/dev/null || true \
+    && find /app -type f -name "*.pyc" -delete \
+    && chown -R mlops:mlops /app
 USER mlops
 EXPOSE 8006
 HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
@@ -136,7 +215,16 @@ COPY pyproject.toml setup.py README.md ./
 COPY src /app/src
 COPY services/common /app/services/common
 COPY services/docs_service /app/services/docs_service
-RUN pip install -e . && chown -R mlops:mlops /app
+# Temporarily install build tools for editable install, then remove them
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential gcc g++ git \
+    && pip install -e . \
+    && apt-get purge -y build-essential gcc g++ git \
+    && apt-get autoremove -y \
+    && rm -rf /var/lib/apt/lists/* \
+    && find /app -type d -name __pycache__ -exec rm -r {} + 2>/dev/null || true \
+    && find /app -type f -name "*.pyc" -delete \
+    && chown -R mlops:mlops /app
 USER mlops
 EXPOSE 8010
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
@@ -152,6 +240,15 @@ COPY pyproject.toml setup.py README.md ./
 COPY src /app/src
 COPY services/common /app/services/common
 COPY tests /app/tests
-RUN pip install -e . && chown -R mlops:mlops /app
+# Temporarily install build tools for editable install, then remove them
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential gcc g++ git \
+    && pip install -e . \
+    && apt-get purge -y build-essential gcc g++ git \
+    && apt-get autoremove -y \
+    && rm -rf /var/lib/apt/lists/* \
+    && find /app -type d -name __pycache__ -exec rm -r {} + 2>/dev/null || true \
+    && find /app -type f -name "*.pyc" -delete \
+    && chown -R mlops:mlops /app
 USER mlops
 CMD ["pytest", "tests/", "-v", "--tb=short"]
