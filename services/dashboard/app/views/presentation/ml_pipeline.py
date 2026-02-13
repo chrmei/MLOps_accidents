@@ -6,7 +6,7 @@ import streamlit as st
 def render():
     """Render ML Pipeline page with detailed graphics and overviews."""
     st.title("Data Science & ML Pipeline")
-    st.markdown("**Duration: 4-5 minutes** | **Presenter: Christian**")
+    st.markdown("**Presenter: Christian**")
     st.markdown("---")
 
     # ML Pipeline Overview
