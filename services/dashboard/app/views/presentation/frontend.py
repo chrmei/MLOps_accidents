@@ -6,7 +6,7 @@ import streamlit as st
 def render():
     """Render Frontend page with detailed graphics and overviews."""
     st.title("Frontend & User Interface")
-    st.markdown("**Duration: 2-3 minutes** | **Presenter: Christian**")
+    st.markdown("**Presenter: Christian**")
     st.markdown("---")
 
     # Streamlit Dashboard Overview
