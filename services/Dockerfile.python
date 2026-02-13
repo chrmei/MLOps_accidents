@@ -3,8 +3,9 @@
 # =============================================================================
 # Build with: docker build -f services/Dockerfile.python --target <stage> .
 # Stages: base | auth_service | data_service | train_service | predict_service | geocode_service | weather_service | docs_service | test_service
-# Base is shared; only one pip install of external deps. Service stages add code
-# and run fast editable install. Use DOCKER_BUILDKIT=1 for cache mounts.
+# Base is shared; only one pip install of external deps. Service stages add code.
+# Uses PYTHONPATH instead of editable install to avoid build tools in runtime.
+# Use DOCKER_BUILDKIT=1 for cache mounts.
 # =============================================================================
 
 # -----------------------------------------------------------------------------
@@ -49,7 +50,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
-    PATH=/root/.local/bin:$PATH
+    PATH=/home/mlops/.local/bin:$PATH \
+    PYTHONPATH=/app
 
 # Install only runtime system dependencies (curl for health checks, libgomp1 for lightgbm)
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -60,25 +62,18 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN useradd --create-home --shell /bin/bash mlops
 WORKDIR /app
 
-# Copy installed Python packages from builder stage
-COPY --from=builder /root/.local /root/.local
+# Copy installed Python packages from builder stage into mlops user home
+COPY --from=builder /root/.local /home/mlops/.local
+RUN chown -R mlops:mlops /home/mlops/.local
 
 # -----------------------------------------------------------------------------
 # Auth Service
 # -----------------------------------------------------------------------------
 FROM base AS auth_service
-COPY pyproject.toml setup.py README.md ./
 COPY src /app/src
 COPY services/common /app/services/common
 COPY services/auth_service /app/services/auth_service
-# Temporarily install build tools for editable install, then remove them
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential gcc g++ git \
-    && pip install -e . \
-    && apt-get purge -y build-essential gcc g++ git \
-    && apt-get autoremove -y \
-    && rm -rf /var/lib/apt/lists/* \
-    && find /app -type d -name __pycache__ -exec rm -r {} + 2>/dev/null || true \
+RUN find /app -type d -name __pycache__ -exec rm -r {} + 2>/dev/null || true \
     && find /app -type f -name "*.pyc" -delete \
     && chown -R mlops:mlops /app
 USER mlops
@@ -91,18 +86,10 @@ CMD ["uvicorn", "services.auth_service.main:app", "--host", "0.0.0.0", "--port",
 # Data Service
 # -----------------------------------------------------------------------------
 FROM base AS data_service
-COPY pyproject.toml setup.py README.md ./
 COPY src /app/src
 COPY services/common /app/services/common
 COPY services/data_service /app/services/data_service
-# Temporarily install build tools for editable install, then remove them
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential gcc g++ git \
-    && pip install -e . \
-    && apt-get purge -y build-essential gcc g++ git \
-    && apt-get autoremove -y \
-    && rm -rf /var/lib/apt/lists/* \
-    && find /app -type d -name __pycache__ -exec rm -r {} + 2>/dev/null || true \
+RUN find /app -type d -name __pycache__ -exec rm -r {} + 2>/dev/null || true \
     && find /app -type f -name "*.pyc" -delete \
     && chown -R mlops:mlops /app
 USER mlops
@@ -115,18 +102,10 @@ CMD ["uvicorn", "services.data_service.main:app", "--host", "0.0.0.0", "--port",
 # Train Service
 # -----------------------------------------------------------------------------
 FROM base AS train_service
-COPY pyproject.toml setup.py README.md ./
 COPY src /app/src
 COPY services/common /app/services/common
 COPY services/train_service /app/services/train_service
-# Temporarily install build tools for editable install, then remove them
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential gcc g++ git \
-    && pip install -e . \
-    && apt-get purge -y build-essential gcc g++ git \
-    && apt-get autoremove -y \
-    && rm -rf /var/lib/apt/lists/* \
-    && find /app -type d -name __pycache__ -exec rm -r {} + 2>/dev/null || true \
+RUN find /app -type d -name __pycache__ -exec rm -r {} + 2>/dev/null || true \
     && find /app -type f -name "*.pyc" -delete \
     && chown -R mlops:mlops /app
 USER mlops
@@ -139,18 +118,10 @@ CMD ["uvicorn", "services.train_service.main:app", "--host", "0.0.0.0", "--port"
 # Predict Service
 # -----------------------------------------------------------------------------
 FROM base AS predict_service
-COPY pyproject.toml setup.py README.md ./
 COPY src /app/src
 COPY services/common /app/services/common
 COPY services/predict_service /app/services/predict_service
-# Temporarily install build tools for editable install, then remove them
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential gcc g++ git \
-    && pip install -e . \
-    && apt-get purge -y build-essential gcc g++ git \
-    && apt-get autoremove -y \
-    && rm -rf /var/lib/apt/lists/* \
-    && find /app -type d -name __pycache__ -exec rm -r {} + 2>/dev/null || true \
+RUN find /app -type d -name __pycache__ -exec rm -r {} + 2>/dev/null || true \
     && find /app -type f -name "*.pyc" -delete \
     && chown -R mlops:mlops /app
 USER mlops
@@ -163,18 +134,10 @@ CMD ["uvicorn", "services.predict_service.main:app", "--host", "0.0.0.0", "--por
 # Geocode Service - Address to latitude/longitude conversion
 # -----------------------------------------------------------------------------
 FROM base AS geocode_service
-COPY pyproject.toml setup.py README.md ./
 COPY src /app/src
 COPY services/common /app/services/common
 COPY services/geocode_service /app/services/geocode_service
-# Temporarily install build tools for editable install, then remove them
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential gcc g++ git \
-    && pip install -e . \
-    && apt-get purge -y build-essential gcc g++ git \
-    && apt-get autoremove -y \
-    && rm -rf /var/lib/apt/lists/* \
-    && find /app -type d -name __pycache__ -exec rm -r {} + 2>/dev/null || true \
+RUN find /app -type d -name __pycache__ -exec rm -r {} + 2>/dev/null || true \
     && find /app -type f -name "*.pyc" -delete \
     && chown -R mlops:mlops /app
 USER mlops
@@ -187,18 +150,10 @@ CMD ["uvicorn", "services.geocode_service.main:app", "--host", "0.0.0.0", "--por
 # Weather Service - Weather and solar data for lighting/atmospheric conditions
 # -----------------------------------------------------------------------------
 FROM base AS weather_service
-COPY pyproject.toml setup.py README.md ./
 COPY src /app/src
 COPY services/common /app/services/common
 COPY services/weather_service /app/services/weather_service
-# Temporarily install build tools for editable install, then remove them
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential gcc g++ git \
-    && pip install -e . \
-    && apt-get purge -y build-essential gcc g++ git \
-    && apt-get autoremove -y \
-    && rm -rf /var/lib/apt/lists/* \
-    && find /app -type d -name __pycache__ -exec rm -r {} + 2>/dev/null || true \
+RUN find /app -type d -name __pycache__ -exec rm -r {} + 2>/dev/null || true \
     && find /app -type f -name "*.pyc" -delete \
     && chown -R mlops:mlops /app
 USER mlops
@@ -211,18 +166,10 @@ CMD ["uvicorn", "services.weather_service.main:app", "--host", "0.0.0.0", "--por
 # Docs Service - OpenAPI aggregator (merged /docs and /openapi.json)
 # -----------------------------------------------------------------------------
 FROM base AS docs_service
-COPY pyproject.toml setup.py README.md ./
 COPY src /app/src
 COPY services/common /app/services/common
 COPY services/docs_service /app/services/docs_service
-# Temporarily install build tools for editable install, then remove them
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential gcc g++ git \
-    && pip install -e . \
-    && apt-get purge -y build-essential gcc g++ git \
-    && apt-get autoremove -y \
-    && rm -rf /var/lib/apt/lists/* \
-    && find /app -type d -name __pycache__ -exec rm -r {} + 2>/dev/null || true \
+RUN find /app -type d -name __pycache__ -exec rm -r {} + 2>/dev/null || true \
     && find /app -type f -name "*.pyc" -delete \
     && chown -R mlops:mlops /app
 USER mlops
@@ -235,19 +182,10 @@ CMD ["uvicorn", "services.docs_service.main:app", "--host", "0.0.0.0", "--port",
 # Test Service
 # -----------------------------------------------------------------------------
 FROM base AS test_service
-ENV PYTHONPATH=/app
-COPY pyproject.toml setup.py README.md ./
 COPY src /app/src
 COPY services/common /app/services/common
 COPY tests /app/tests
-# Temporarily install build tools for editable install, then remove them
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential gcc g++ git \
-    && pip install -e . \
-    && apt-get purge -y build-essential gcc g++ git \
-    && apt-get autoremove -y \
-    && rm -rf /var/lib/apt/lists/* \
-    && find /app -type d -name __pycache__ -exec rm -r {} + 2>/dev/null || true \
+RUN find /app -type d -name __pycache__ -exec rm -r {} + 2>/dev/null || true \
     && find /app -type f -name "*.pyc" -delete \
     && chown -R mlops:mlops /app
 USER mlops

@@ -30,3 +30,7 @@ doc/**/*.md
 .python-version
 .tool-versions
 LICENSE
+# Exclude directories not needed in service images
+deploy
+monitoring
+docker-compose*.yml

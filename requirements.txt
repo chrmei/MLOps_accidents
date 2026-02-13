@@ -1,26 +1,27 @@
 # local package
 -e .
 
-# external requirements
+# =============================================================================
+# ML / Data Pipeline Dependencies
+# =============================================================================
 click
-Sphinx
-coverage
-#awscli>=1.29.0
-flake8
 pandas
-#logging
-numpy 
-pathlib 
+numpy
+pathlib
 scikit-learn>=1.4.2,<1.5
 imbalanced-learn==0.14.0
 joblib
 xgboost==3.0.5
 lightgbm
-matplotlib
-seaborn
 mlflow
-#sys
-#json
+pyyaml
+
+# Data validation (data_service)
+pandera[pandas]>=0.28.1
+
+# ML monitoring (predict_service)
+evidently>=0.7.20
+prometheus-client>=0.24.1
 
 # =============================================================================
 # FastAPI Microservices Dependencies
@@ -54,11 +55,3 @@ python-dotenv>=1.0.0,<2.0.0
 # Database (Postgres persistence for users and job logs)
 sqlalchemy>=2.0.0,<3.0.0
 psycopg2-binary>=2.9.0,<3.0.0
-
-# =============================================================================
-# Testing Dependencies
-# =============================================================================
-pytest>=7.4.0,<8.0.0
-pytest-asyncio>=0.21.0,<1.0.0
-pytest-cov>=4.1.0,<5.0.0
-httpx>=0.26.0,<1.0.0  # Already listed above, but needed for async testing

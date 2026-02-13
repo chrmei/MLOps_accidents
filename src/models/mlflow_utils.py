@@ -11,15 +11,10 @@ import os
 import warnings
 from typing import Dict, Optional
 
-import matplotlib
-
-matplotlib.use("Agg")  # Use non-interactive backend
-import matplotlib.pyplot as plt
 import mlflow
 import mlflow.sklearn
 import numpy as np
 import pandas as pd
-import seaborn as sns
 from mlflow.models import infer_signature
 from sklearn.metrics import auc, confusion_matrix, roc_curve
 
@@ -96,6 +91,18 @@ def log_visualizations_to_mlflow(
     model_type : str
         Type of model (for feature importance extraction)
     """
+    try:
+        import matplotlib
+        matplotlib.use("Agg")  # Use non-interactive backend
+        import matplotlib.pyplot as plt
+        import seaborn as sns
+    except ImportError:
+        logger.warning(
+            "matplotlib/seaborn not installed. Skipping visualization logging. "
+            "Install with: pip install matplotlib seaborn"
+        )
+        return
+
     try:
         logger.info("Logging visualizations to MLflow...")
 

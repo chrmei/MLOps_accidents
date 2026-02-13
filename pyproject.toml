@@ -23,9 +23,6 @@ classifiers = [
 
 dependencies = [
     "click",
-    "Sphinx",
-    "coverage",
-    "flake8",
     "pandas",
     "numpy",
     "mlflow>=2.0.0",
@@ -34,11 +31,8 @@ dependencies = [
     "scikit-learn>=1.4.2,<1.5",
     "imbalanced-learn==0.14.0",
     "joblib",
-    "dvc[s3]>=3.42.0",
-    "boto3",
     "lightgbm",
     "pandera[pandas]>=0.28.1",
-    "seaborn==0.13.2",
     # FastAPI Microservices
     "fastapi>=0.109.0,<1.0.0",
     "uvicorn[standard]>=0.27.0,<1.0.0",
@@ -68,6 +62,14 @@ dev = [
     "mypy",
     "types-PyYAML",
     "xgboost==3.0.5",
+    # Dev/pipeline tools (not needed in Docker service images)
+    "Sphinx",
+    "coverage",
+    "flake8",
+    "dvc[s3]>=3.42.0",
+    "boto3",
+    "seaborn==0.13.2",
+    "matplotlib",
 ]
 
 [project.urls]

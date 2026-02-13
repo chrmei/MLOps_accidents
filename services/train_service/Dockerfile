@@ -3,6 +3,7 @@
 # =============================================================================
 # Handles model training and MLflow integration
 # Multi-stage build to reduce image size
+# Uses PYTHONPATH instead of editable install to avoid build tools in runtime.
 # =============================================================================
 
 # -----------------------------------------------------------------------------
@@ -25,11 +26,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
-# Install Python dependencies
-COPY requirements.txt pyproject.toml setup.py README.md ./
-COPY src /app/src
+# Install only external deps (exclude -e .) so this layer caches when requirements.txt is unchanged
+COPY requirements.txt ./
 RUN pip install --upgrade pip && \
-    pip install --user --no-cache-dir -r requirements.txt
+    grep -v '^-e' requirements.txt > /tmp/requirements.txt && \
+    pip install --user --no-cache-dir -r /tmp/requirements.txt
 
 # -----------------------------------------------------------------------------
 # Runtime stage: Copy only installed packages, no build tools
@@ -43,7 +44,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
-    PATH=/root/.local/bin:$PATH
+    PATH=/home/mlops/.local/bin:$PATH \
+    PYTHONPATH=/app
 
 # Install only runtime system dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -55,11 +57,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN useradd --create-home --shell /bin/bash mlops
 WORKDIR /app
 
-# Copy installed Python packages from builder
-COPY --from=builder /root/.local /root/.local
+# Copy installed Python packages from builder into mlops user home
+COPY --from=builder /root/.local /home/mlops/.local
+RUN chown -R mlops:mlops /home/mlops/.local
 
 # Copy application files
-COPY pyproject.toml setup.py README.md ./
 COPY src /app/src
 COPY services/common /app/services/common
 COPY services/train_service /app/services/train_service
@@ -80,4 +82,3 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
 
 # Run the service
 CMD ["uvicorn", "services.train_service.main:app", "--host", "0.0.0.0", "--port", "8002"]
-
