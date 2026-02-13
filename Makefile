@@ -76,19 +76,11 @@ lint: ## Run linting with flake8
 	@echo "Running flake8..."
 	$(FLAKE8) src/ --max-line-length=88 --extend-ignore=E203,W503
 
-format: ## Format code with black and isort
+format: ## Format code with black and isort (matches GitHub Actions scope: src/ only)
 	@echo "Formatting code with black..."
-	@if [ -d tests ]; then \
-		$(BLACK) src/ tests/; \
-	else \
-		$(BLACK) src/; \
-	fi
+	$(BLACK) src/
 	@echo "Sorting imports with isort..."
-	@if [ -d tests ]; then \
-		$(ISORT) src/ tests/; \
-	else \
-		$(ISORT) src/; \
-	fi
+	$(ISORT) src/
 
 type-check: ## Run type checking with mypy
 	@echo "Running mypy..."
